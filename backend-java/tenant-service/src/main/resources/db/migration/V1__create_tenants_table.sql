@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS tenants (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    domain TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+

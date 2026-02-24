@@ -1,0 +1,157 @@
+Build a full-stack microservices application for a Context-Aware Multi-Tenant RAG System.
+
+The platform should be enterprise-style, scalable, and modular.
+
+🔐 Authentication Requirements
+
+Implement authentication using Clerk.
+
+Support:
+
+Google Sign-In
+
+Email and Password login
+
+Session management
+
+Role-based access control
+
+Tenant-aware authorization
+
+Frontend must integrate Clerk SDK.
+Backend services must validate Clerk JWT tokens.
+
+🧩 Backend Architecture
+
+Use Microservices Architecture.
+
+Java (Spring Boot Services):
+
+API Gateway
+
+Central entry point
+
+Authentication validation
+
+Request routing
+
+Context Intelligence Service
+
+Extract role, department, permissions
+
+Provide user context API
+
+Multi-Tenant Isolation Service
+
+Enforce tenant separation
+
+Route requests to correct data source
+
+Access Control Service
+
+RBAC + ABAC authorization logic
+
+Python (FastAPI Services):
+5. Query Processing Service
+
+Query classification
+
+Intent detection
+
+Hybrid Retrieval Service
+
+BM25 keyword search
+
+Vector similarity search
+
+RAG Generation Service
+
+Context-aware answer generation
+
+Prompt construction
+
+Temporal Context Service
+
+Time-sensitive reasoning
+
+Event-aware filtering
+
+All services communicate via REST APIs using JSON.
+
+☁ Database (Cloud Hosted)
+
+Use cloud-based storage:
+
+PostgreSQL Cloud → users, metadata, policies
+
+Vector Database Cloud (Qdrant or Pinecone) → embeddings
+
+Redis Cloud → caching
+
+Object Storage (S3 compatible) → documents
+
+Use environment variables for credentials.
+
+🎨 Frontend Requirements
+
+Create a modern web UI:
+
+Stack:
+
+React + TypeScript
+
+Tailwind CSS
+
+Three.js for 3D visuals
+
+Clerk authentication integration
+
+Features:
+
+Google login + email/password login
+
+Role-based dashboard
+
+Query interface
+
+Animated retrieval pipeline
+
+3D knowledge graph visualization
+
+Smooth transitions and interactions
+
+Design style:
+
+Minimalist
+
+Glassmorphism
+
+Smooth UX
+
+🐳 Deployment Requirements
+
+Dockerize all services
+
+Provide docker-compose configuration
+
+Service health check endpoints
+
+Central configuration management
+
+README with setup steps
+
+📁 Output Requirements
+
+Generate:
+
+Folder structure
+
+Backend services code
+
+Frontend code
+
+Docker setup
+
+Environment configuration guide
+
+Generate step-by-step starting from architecture structure.
