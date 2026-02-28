@@ -18,6 +18,7 @@ export const tenants = pgTable("tenants", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   domain: text("domain"),
+  type: text("type").notNull().default("demo"), // academic | enterprise | research | demo
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -26,9 +27,11 @@ export const tenantMembers = pgTable("tenant_members", {
   id: serial("id").primaryKey(),
   tenantId: serial("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  role: text("role").notNull(), // admin, member, viewer
+  role: text("role").notNull(), // SUPER_ADMIN, TENANT_ADMIN, MANAGER, USER, VIEWER
   department: text("department"),
   permissions: text("permissions").array(),
+  accessLevel: text("access_level"), // low | medium | high, etc.
+  organizationType: text("organization_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("tenant_members_tenant_idx").on(table.tenantId),
@@ -113,7 +116,10 @@ export const queriesRelations = relations(queries, ({ one }) => ({
 
 export const insertTenantSchema = createInsertSchema(tenants).omit({ id: true, createdAt: true });
 export const insertTenantMemberSchema = createInsertSchema(tenantMembers).omit({ id: true, createdAt: true });
-export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, createdAt: true });
+export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, createdAt: true }).extend({
+  tenantId: z.coerce.number().optional(),
+  uploadedBy: z.string().optional(),
+});
 export const insertQuerySchema = createInsertSchema(queries).omit({ id: true, createdAt: true });
 
 // ============================================

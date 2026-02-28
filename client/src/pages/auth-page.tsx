@@ -1,20 +1,52 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { BrainCircuit, Shield, Database, Zap } from "lucide-react";
-import { SignIn } from "@clerk/clerk-react";
+import { BrainCircuit, Shield, Database, Zap, ArrowRight } from "lucide-react";
 
 export default function AuthPage() {
   const { isAuthenticated, isLoading } = useAuth();
   const [, setLocation] = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       setLocation("/dashboard");
     }
   }, [isAuthenticated, isLoading, setLocation]);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const endpoint = mode === "login" ? "/api/login" : "/api/register";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || "Authentication failed");
+      }
+
+      // On success, reload app state
+      window.location.href = "/dashboard";
+    } catch (err: any) {
+      setError(err.message || "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -108,21 +140,58 @@ export default function AuthPage() {
               Welcome Back
             </h2>
             <p className="text-sm text-muted-foreground">
-              Sign in with Google or email to access your workspace
+              Sign in with your email and password
             </p>
           </div>
 
-          <div className="flex justify-center">
-            <SignIn
-              routing="path"
-              path="/"
-              appearance={{
-                elements: {
-                  card: "shadow-none bg-transparent border-0",
-                },
-              }}
-            />
-          </div>
+          <form className="space-y-4" onSubmit={handleSubmit}>
+            <div className="space-y-2 text-left">
+              <label className="text-sm font-medium">Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full h-11 px-3 rounded-xl bg-background border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
+              />
+            </div>
+
+            <div className="space-y-2 text-left">
+              <label className="text-sm font-medium">Password</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full h-11 px-3 rounded-xl bg-background border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
+              />
+            </div>
+
+            {error && (
+              <p className="text-sm text-destructive text-center">{error}</p>
+            )}
+
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="w-full h-11 text-base font-semibold rounded-xl bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-all hover:-translate-y-0.5 hover:shadow-[0_10px_20px_rgba(139,92,246,0.3)] group"
+            >
+              {mode === "login" ? "Sign in" : "Create account"}
+              <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+            </Button>
+
+            <button
+              type="button"
+              className="w-full text-xs text-muted-foreground mt-2 underline-offset-2 hover:underline"
+              onClick={() =>
+                setMode((m) => (m === "login" ? "register" : "login"))
+              }
+            >
+              {mode === "login"
+                ? "Need an account? Sign up"
+                : "Already have an account? Sign in"}
+            </button>
+          </form>
         </motion.div>
       </div>
     </div>

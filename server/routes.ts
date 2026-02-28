@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { isAuthenticated } from "./replit_integrations/auth";
+import { isAuthenticated } from "./auth";
+import { withTenantContext, requirePermission } from "./accessControl";
 import { api } from "@shared/routes";
 import { tenantServiceClient } from "./tenantServiceClient";
 import { z } from "zod";
@@ -19,8 +20,11 @@ export async function registerRoutes(
   // ============================================
   // TENANT ROUTES
   // ============================================
-  
-  app.get(api.tenants.list.path, isAuthenticated, async (req, res) => {
+
+  app.get(
+    api.tenants.list.path,
+    isAuthenticated,
+    async (req, res) => {
     try {
       if (process.env.TENANT_SERVICE_BASE_URL) {
         const tenants = await tenantServiceClient.listTenants(req);
@@ -33,11 +37,12 @@ export async function registerRoutes(
       console.error("Error fetching tenants:", error);
       res.status(500).json({ message: "Failed to fetch tenants" });
     }
-  });
+    },
+  );
 
   app.get(api.tenants.get.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(req.params.id as string);
 
       if (process.env.TENANT_SERVICE_BASE_URL) {
         const tenant = await tenantServiceClient.getTenant(req, id);
@@ -55,7 +60,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.tenants.create.path, isAuthenticated, async (req, res) => {
+  app.post(
+    api.tenants.create.path,
+    isAuthenticated,
+    async (req, res) => {
     try {
       const input = api.tenants.create.input.parse(req.body);
 
@@ -65,9 +73,9 @@ export async function registerRoutes(
       }
 
       const tenant = await storage.createTenant(input);
-      
+
       // Add creator as admin
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.id;
       if (userId) {
         await storage.addTenantMember({
           tenantId: tenant.id,
@@ -76,7 +84,7 @@ export async function registerRoutes(
           permissions: ["read", "write", "admin"],
         });
       }
-      
+
       res.status(201).json(tenant);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -88,26 +96,38 @@ export async function registerRoutes(
       console.error("Error creating tenant:", err);
       res.status(500).json({ message: "Failed to create tenant" });
     }
-  });
+    },
+  );
 
   // ============================================
   // TENANT MEMBER ROUTES
   // ============================================
-  
-  app.get(api.tenantMembers.list.path, isAuthenticated, async (req, res) => {
+
+  app.get(
+    api.tenantMembers.list.path,
+    isAuthenticated,
+    withTenantContext(true),
+    requirePermission("TENANT_MEMBER_READ", ["TENANT_ADMIN", "MANAGER"]),
+    async (req, res) => {
     try {
-      const tenantId = parseInt(req.params.tenantId);
+      const tenantId = req.tenantContext!.tenantId;
       const members = await storage.getTenantMembers(tenantId);
       res.json(members);
     } catch (error) {
       console.error("Error fetching tenant members:", error);
       res.status(500).json({ message: "Failed to fetch members" });
     }
-  });
+    },
+  );
 
-  app.post(api.tenantMembers.add.path, isAuthenticated, async (req, res) => {
+  app.post(
+    api.tenantMembers.add.path,
+    isAuthenticated,
+    withTenantContext(true),
+    requirePermission("TENANT_MEMBER_WRITE", ["TENANT_ADMIN"]),
+    async (req, res) => {
     try {
-      const tenantId = parseInt(req.params.tenantId);
+      const tenantId = req.tenantContext!.tenantId;
       const input = api.tenantMembers.add.input.parse(req.body);
       const member = await storage.addTenantMember({
         tenantId,
@@ -124,15 +144,22 @@ export async function registerRoutes(
       console.error("Error adding member:", err);
       res.status(500).json({ message: "Failed to add member" });
     }
-  });
+    },
+  );
 
   // ============================================
   // DOCUMENT ROUTES
   // ============================================
-  
-  app.get(api.documents.list.path, isAuthenticated, async (req, res) => {
+
+  app.get(
+    api.documents.list.path,
+    isAuthenticated,
+    withTenantContext(false),
+    async (req, res) => {
     try {
-      const tenantId = req.query.tenantId ? parseInt(req.query.tenantId as string) : undefined;
+      const tenantId =
+        req.tenantContext?.tenantId ??
+        (req.query.tenantId ? parseInt(req.query.tenantId as string) : undefined);
       const category = req.query.category as string | undefined;
       const docs = await storage.getDocuments(tenantId, category);
       res.json(docs);
@@ -140,11 +167,12 @@ export async function registerRoutes(
       console.error("Error fetching documents:", error);
       res.status(500).json({ message: "Failed to fetch documents" });
     }
-  });
+    },
+  );
 
   app.get(api.documents.get.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(req.params.id as string);
       const doc = await storage.getDocument(id);
       if (!doc) {
         return res.status(404).json({ message: "Document not found" });
@@ -156,12 +184,17 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.documents.create.path, isAuthenticated, async (req, res) => {
+  app.post(
+    api.documents.create.path,
+    isAuthenticated,
+    withTenantContext(true),
+    requirePermission("DOCUMENT_WRITE", ["TENANT_ADMIN", "MANAGER"]),
+    async (req, res) => {
     try {
       const input = api.documents.create.input.extend({
-        tenantId: z.coerce.number(),
+        tenantId: z.coerce.number().default(req.tenantContext!.tenantId),
       }).parse(req.body);
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.id;
       const doc = await storage.createDocument({
         ...input,
         uploadedBy: userId,
@@ -177,11 +210,12 @@ export async function registerRoutes(
       console.error("Error creating document:", err);
       res.status(500).json({ message: "Failed to create document" });
     }
-  });
+    },
+  );
 
   app.delete(api.documents.delete.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(req.params.id as string);
       await storage.deleteDocument(id);
       res.status(204).send();
     } catch (error) {
@@ -193,11 +227,11 @@ export async function registerRoutes(
   // ============================================
   // QUERY ROUTES (RAG Processing)
   // ============================================
-  
+
   app.get(api.queries.list.path, isAuthenticated, async (req, res) => {
     try {
       const tenantId = req.query.tenantId ? parseInt(req.query.tenantId as string) : undefined;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.id;
       const queries = await storage.getQueries(tenantId, userId);
       res.json(queries);
     } catch (error) {
@@ -209,23 +243,23 @@ export async function registerRoutes(
   app.post(api.queries.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.queries.create.input.parse(req.body);
-      const userId = (req.user as any)?.claims?.sub;
-      
+      const userId = (req.user as any)?.id;
+
       // Get user's tenant (simplified - use first tenant they belong to)
       const tenants = await storage.getAllTenants();
       const userTenant = tenants[0]; // Simplified: use first tenant
-      
+
       if (!userTenant) {
         return res.status(400).json({ message: "No tenant found for user" });
       }
 
       // Get relevant documents for this tenant
       const docs = await storage.getDocuments(userTenant.id);
-      
+
       // Simple RAG: Find relevant docs by keyword matching
       const queryLower = input.query.toLowerCase();
       const relevantDocs = docs
-        .filter(doc => 
+        .filter(doc =>
           doc.title.toLowerCase().includes(queryLower) ||
           doc.content.toLowerCase().includes(queryLower)
         )
@@ -245,7 +279,7 @@ Context:
 ${context || "No relevant documents found."}`;
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-5.1",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: input.query },
@@ -296,7 +330,7 @@ async function seedDatabase() {
     const tenants = await storage.getAllTenants();
     if (tenants.length === 0) {
       console.log("Seeding database with initial data...");
-      
+
       // Create demo tenant (documents will be added when first user logs in)
       await storage.createTenant({
         name: "Demo Corporation",

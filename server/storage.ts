@@ -17,22 +17,22 @@ import {
   type QueryResponse,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, getTableColumns } from "drizzle-orm";
 
 export interface IStorage {
   getTenant(id: number): Promise<TenantResponse | undefined>;
   getAllTenants(): Promise<TenantResponse[]>;
   createTenant(data: CreateTenantRequest): Promise<Tenant>;
-  
+
   getTenantMembers(tenantId: number): Promise<TenantMemberResponse[]>;
   getTenantMemberByUser(tenantId: number, userId: string): Promise<TenantMember | undefined>;
   addTenantMember(data: CreateTenantMemberRequest): Promise<TenantMember>;
-  
+
   getDocuments(tenantId?: number, category?: string): Promise<DocumentResponse[]>;
   getDocument(id: number): Promise<DocumentResponse | undefined>;
   createDocument(data: CreateDocumentRequest): Promise<Document>;
   deleteDocument(id: number): Promise<void>;
-  
+
   getQueries(tenantId?: number, userId?: string): Promise<QueryResponse[]>;
   createQuery(data: {
     tenantId: number;
@@ -49,26 +49,26 @@ export class DatabaseStorage implements IStorage {
   async getTenant(id: number): Promise<TenantResponse | undefined> {
     const [tenant] = await db
       .select({
-        ...tenants,
+        ...getTableColumns(tenants),
         membersCount: sql<number>`count(${tenantMembers.id})::int`,
       })
       .from(tenants)
       .leftJoin(tenantMembers, eq(tenants.id, tenantMembers.tenantId))
       .where(eq(tenants.id, id))
       .groupBy(tenants.id);
-    return tenant;
+    return tenant as TenantResponse | undefined;
   }
 
   async getAllTenants(): Promise<TenantResponse[]> {
     return db
       .select({
-        ...tenants,
+        ...getTableColumns(tenants),
         membersCount: sql<number>`count(${tenantMembers.id})::int`,
       })
       .from(tenants)
       .leftJoin(tenantMembers, eq(tenants.id, tenantMembers.tenantId))
       .groupBy(tenants.id)
-      .orderBy(desc(tenants.createdAt));
+      .orderBy(desc(tenants.createdAt)) as any;
   }
 
   async createTenant(data: CreateTenantRequest): Promise<Tenant> {
@@ -80,12 +80,12 @@ export class DatabaseStorage implements IStorage {
   async getTenantMembers(tenantId: number): Promise<TenantMemberResponse[]> {
     return db
       .select({
-        ...tenantMembers,
+        ...getTableColumns(tenantMembers),
         userName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
       })
       .from(tenantMembers)
       .leftJoin(users, eq(tenantMembers.userId, users.id))
-      .where(eq(tenantMembers.tenantId, tenantId));
+      .where(eq(tenantMembers.tenantId, tenantId)) as any;
   }
 
   async getTenantMemberByUser(
@@ -116,7 +116,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<DocumentResponse[]> {
     let query = db
       .select({
-        ...documents,
+        ...getTableColumns(documents),
         uploaderName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
       })
       .from(documents)
@@ -130,22 +130,22 @@ export class DatabaseStorage implements IStorage {
       query = query.where(eq(documents.category, category)) as any;
     }
 
-    return query;
+    return query as any;
   }
 
   async getDocument(id: number): Promise<DocumentResponse | undefined> {
     const [doc] = await db
       .select({
-        ...documents,
+        ...getTableColumns(documents),
         uploaderName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
       })
       .from(documents)
       .leftJoin(users, eq(documents.uploadedBy, users.id))
       .where(eq(documents.id, id));
-    return doc;
+    return doc as DocumentResponse | undefined;
   }
 
-  async createDocument(data: CreateDocumentRequest): Promise<Document> {
+  async createDocument(data: any): Promise<Document> {
     const [doc] = await db.insert(documents).values(data).returning();
     return doc;
   }

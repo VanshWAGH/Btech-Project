@@ -1,6 +1,7 @@
 import { AppLayout } from "@/components/layout/app-layout";
 import { useState } from "react";
 import { useDocuments, useCreateDocument, useDeleteDocument } from "@/hooks/use-documents";
+import { useTenants } from "@/hooks/use-tenants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,23 +16,32 @@ export default function Documents() {
   const createDocument = useCreateDocument();
   const deleteDocument = useDeleteDocument();
   const { toast } = useToast();
-  
+
+  const { data: tenants = [] } = useTenants();
   const [search, setSearch] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [formData, setFormData] = useState({ title: "", category: "", content: "" });
 
-  const filteredDocs = documents.filter(doc => 
-    doc.title.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredDocs = documents.filter(doc =>
+    doc.title.toLowerCase().includes(search.toLowerCase()) ||
     doc.category?.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleUpload = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const tenantId = tenants[0]?.id;
+    if (!tenantId) {
+      toast({ title: "No tenant found", description: "You must belong to a tenant to upload documents.", variant: "destructive" });
+      return;
+    }
+
     createDocument.mutate(
       {
         title: formData.title,
         category: formData.category,
         content: formData.content,
+        tenantId,
       },
       {
         onSuccess: () => {
@@ -47,7 +57,7 @@ export default function Documents() {
   };
 
   const handleDelete = (id: number) => {
-    if(confirm("Are you sure you want to delete this document?")) {
+    if (confirm("Are you sure you want to delete this document?")) {
       deleteDocument.mutate(id, {
         onSuccess: () => toast({ title: "Document deleted" })
       });
@@ -61,18 +71,18 @@ export default function Documents() {
           <h1 className="text-3xl font-display font-bold">Knowledge Base</h1>
           <p className="text-muted-foreground mt-1">Manage documents available for the RAG engine.</p>
         </div>
-        
+
         <div className="flex items-center gap-3">
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search documents..." 
+            <Input
+              placeholder="Search documents..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 glass-input rounded-xl h-11"
             />
           </div>
-          
+
           <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
             <DialogTrigger asChild>
               <Button className="h-11 px-6 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
@@ -88,25 +98,25 @@ export default function Documents() {
                 </DialogTitle>
                 <p className="text-sm text-muted-foreground mt-1">This text will be embedded and made searchable.</p>
               </div>
-              
+
               <form onSubmit={handleUpload} className="p-6 space-y-5">
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Title</label>
-                      <Input 
+                      <Input
                         required
                         value={formData.title}
-                        onChange={e => setFormData({...formData, title: e.target.value})}
+                        onChange={e => setFormData({ ...formData, title: e.target.value })}
                         className="glass-input h-11"
                         placeholder="e.g. Q3 Roadmap"
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Category</label>
-                      <Input 
+                      <Input
                         value={formData.category}
-                        onChange={e => setFormData({...formData, category: e.target.value})}
+                        onChange={e => setFormData({ ...formData, category: e.target.value })}
                         className="glass-input h-11"
                         placeholder="e.g. Planning"
                       />
@@ -114,16 +124,16 @@ export default function Documents() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Content (Text)</label>
-                    <Textarea 
+                    <Textarea
                       required
                       value={formData.content}
-                      onChange={e => setFormData({...formData, content: e.target.value})}
+                      onChange={e => setFormData({ ...formData, content: e.target.value })}
                       className="glass-input min-h-[200px] resize-y"
                       placeholder="Paste document text here..."
                     />
                   </div>
                 </div>
-                
+
                 <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
                   <Button type="button" variant="ghost" onClick={() => setIsUploadOpen(false)}>Cancel</Button>
                   <Button type="submit" disabled={createDocument.isPending} className="bg-primary hover:bg-primary/90">
@@ -166,11 +176,11 @@ export default function Documents() {
                 </tr>
               ) : (
                 filteredDocs.map((doc, i) => (
-                  <motion.tr 
+                  <motion.tr
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    key={doc.id} 
+                    key={doc.id}
                     className="border-b border-white/5 hover:bg-white/5 transition-colors group"
                   >
                     <td className="px-6 py-4">
@@ -190,9 +200,9 @@ export default function Documents() {
                       {format(new Date(doc.createdAt), 'MMM d, yyyy')}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => handleDelete(doc.id)}
                         disabled={deleteDocument.isPending}
                         className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
