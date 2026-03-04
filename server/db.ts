@@ -10,5 +10,15 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Create PostgreSQL connection pool
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+
+  // Required for most cloud providers (Neon, Supabase, AWS RDS)
+  ssl: {
+    rejectUnauthorized: false,
+  },
+});
+
+// Initialize Drizzle ORM
 export const db = drizzle(pool, { schema });

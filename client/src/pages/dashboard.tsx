@@ -15,6 +15,26 @@ export default function Dashboard() {
   const { data: history = [] } = useQueries();
   const createQuery = useCreateQuery();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  //Add creaetuser
+  const createUser = async () => {
+  try {
+    const response = await fetch("http://localhost:5000/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "user_001",
+        email: "vansh@test.com",
+        firstName: "Vansh",
+        lastName: "Jasrotia",
+      }),
+    });
+
+    const data = await response.json();
+    console.log("User created:", data);
+  } catch (error) {
+    console.error("Error creating user:", error);
+  }
+};
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,13 +48,13 @@ export default function Dashboard() {
     });
   };
 
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
     }
   };
-
   // Auto-scroll to bottom of results
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,6 +69,9 @@ export default function Dashboard() {
           <header className="mb-6">
             <h1 className="text-3xl font-display font-bold">Query Engine</h1>
             <p className="text-muted-foreground mt-1">Ask questions across your organization's knowledge base.</p>
+            <button onClick={createUser} className="mt-4 px-4 py-2 bg-primary text-white rounded-lg">
+  Create Test User
+</button>
           </header>
 
           {/* Results Area */}
