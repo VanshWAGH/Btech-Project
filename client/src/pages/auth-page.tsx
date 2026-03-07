@@ -10,6 +10,10 @@ export default function AuthPage() {
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [role, setRole] = useState("STUDENT");
+  const [department, setDepartment] = useState("");
   const [mode, setMode] = useState<"login" | "register">("login");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +35,7 @@ export default function AuthPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(mode === "register" ? { email, password, firstName, lastName, role, department } : { email, password }),
       });
 
       if (!res.ok) {
@@ -63,7 +67,7 @@ export default function AuthPage() {
         {/* Animated Background Blobs */}
         <div className="absolute top-0 -left-4 w-96 h-96 bg-primary/30 rounded-full mix-blend-screen filter blur-[100px] opacity-70 animate-blob" />
         <div className="absolute top-0 -right-4 w-96 h-96 bg-accent/30 rounded-full mix-blend-screen filter blur-[100px] opacity-70 animate-blob animate-blob-delayed" />
-        
+
         <div className="relative z-10 flex items-center gap-3 mb-12">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_30px_rgba(139,92,246,0.3)]">
             <BrainCircuit className="w-7 h-7 text-white" />
@@ -78,7 +82,7 @@ export default function AuthPage() {
             transition={{ delay: 0.2 }}
           >
             <h2 className="text-4xl lg:text-6xl font-display font-bold leading-[1.1] mb-6">
-              Intelligence <br/>
+              Intelligence <br />
               <span className="text-gradient">Contextualized.</span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-md mb-12 leading-relaxed">
@@ -91,7 +95,7 @@ export default function AuthPage() {
                 { icon: Database, text: "Vector-powered retrieval" },
                 { icon: Zap, text: "Real-time stream processing" }
               ].map((feature, i) => (
-                <motion.div 
+                <motion.div
                   key={i}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -107,12 +111,12 @@ export default function AuthPage() {
             </div>
           </motion.div>
         </div>
-        
+
         {/* Unsplash abstract tech image in background */}
         {/* Abstract tech background */}
-        <img 
-          src="https://images.unsplash.com/photo-1639322537228-f710d846310a?w=1000&q=80" 
-          alt="Abstract tech" 
+        <img
+          src="https://images.unsplash.com/photo-1639322537228-f710d846310a?w=1000&q=80"
+          alt="Abstract tech"
           className="absolute inset-0 w-full h-full object-cover opacity-[0.03] mix-blend-screen pointer-events-none"
         />
       </div>
@@ -120,8 +124,8 @@ export default function AuthPage() {
       {/* Auth Action Right Side */}
       <div className="w-full md:w-1/2 flex items-center justify-center p-8 lg:p-24 relative z-10">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(120,80,255,0.05)_0%,transparent_100%)] md:hidden pointer-events-none" />
-        
-        <motion.div 
+
+        <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4 }}
@@ -155,6 +159,61 @@ export default function AuthPage() {
                 className="w-full h-11 px-3 rounded-xl bg-background border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
               />
             </div>
+
+            {mode === "register" && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2 text-left">
+                    <label className="text-sm font-medium">First Name</label>
+                    <input
+                      type="text"
+                      required={mode === "register"}
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl bg-background border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
+                    />
+                  </div>
+                  <div className="space-y-2 text-left">
+                    <label className="text-sm font-medium">Last Name</label>
+                    <input
+                      type="text"
+                      required={mode === "register"}
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl bg-background border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2 text-left">
+                    <label className="text-sm font-medium">Role</label>
+                    <select
+                      value={role}
+                      onChange={(e) => setRole(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl bg-background border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
+                    >
+                      <option value="STUDENT">Student</option>
+                      <option value="TEACHER">Faculty / Teacher</option>
+                      <option value="DEPARTMENT">Department Admin</option>
+                      <option value="ADMIN">System Admin</option>
+                      <option value="RESEARCHER">Researcher</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2 text-left">
+                    <label className="text-sm font-medium">Department</label>
+                    <input
+                      type="text"
+                      required={mode === "register"}
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl bg-background border border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60"
+                      placeholder="e.g. Computer Science"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="space-y-2 text-left">
               <label className="text-sm font-medium">Password</label>

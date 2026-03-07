@@ -2,16 +2,21 @@ import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  BrainCircuit, 
-  LayoutDashboard, 
-  Files, 
-  Users, 
-  Settings, 
+import {
+  BrainCircuit,
+  LayoutDashboard,
+  Files,
+  Users,
+  Settings,
   LogOut,
   ChevronDown,
   Menu,
-  X
+  X,
+  Activity,
+  Megaphone,
+  History,
+  CheckCircle,
+  UserCog
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,11 +32,35 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Determine valid links for the current user's role
+  const userRole = user?.role?.toUpperCase() || "STUDENT";
+
   const navigation = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Documents", href: "/documents", icon: Files },
-    { name: "Tenants", href: "/tenants", icon: Users },
-  ];
+    // Shared
+    { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["STUDENT", "TEACHER", "DEPARTMENT", "ADMIN", "RESEARCHER"] },
+
+    // Student
+    { name: "Course Materials", href: "/documents", icon: Files, roles: ["STUDENT"] },
+    { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["STUDENT", "TEACHER", "DEPARTMENT"] },
+    { name: "Chat History", href: "/history", icon: History, roles: ["STUDENT"] },
+
+    // Teacher
+    { name: "Manage Materials", href: "/documents", icon: Files, roles: ["TEACHER"] },
+    { name: "Student Questions", href: "/history", icon: History, roles: ["TEACHER"] },
+
+    // Department Admin
+    { name: "Dept Knowledge Base", href: "/documents", icon: Files, roles: ["DEPARTMENT"] },
+    { name: "Approve Documents", href: "/approve-docs", icon: CheckCircle, roles: ["DEPARTMENT"] },
+    { name: "Faculty Management", href: "/faculty-mgmt", icon: UserCog, roles: ["DEPARTMENT"] },
+
+    // Super Admin
+    { name: "Global Knowledge Base", href: "/documents", icon: Files, roles: ["ADMIN", "RESEARCHER"] },
+    { name: "User Management", href: "/admin-users", icon: UserCog, roles: ["ADMIN"] },
+    { name: "Tenant Management", href: "/tenants", icon: Users, roles: ["ADMIN"] },
+
+    // Analytics
+    { name: "Analytics Dashboard", href: "/analytics", icon: Activity, roles: ["ADMIN", "DEPARTMENT", "TEACHER"] }
+  ].filter(item => item.roles.includes(userRole));
 
   const NavLinks = () => (
     <>
@@ -39,15 +68,14 @@ export function AppLayout({ children }: AppLayoutProps) {
         const isActive = location === item.href;
         return (
           <Link key={item.name} href={item.href}>
-            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-300 ${
-              isActive 
-                ? "bg-primary/20 text-primary font-medium shadow-inner border border-primary/20" 
-                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-            }`}>
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-300 ${isActive
+              ? "bg-primary/20 text-primary font-medium shadow-inner border border-primary/20"
+              : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}>
               <item.icon className={`w-5 h-5 ${isActive ? "text-primary" : ""}`} />
               <span>{item.name}</span>
               {isActive && (
-                <motion.div 
+                <motion.div
                   layoutId="active-nav-indicator"
                   className="absolute left-0 w-1 h-8 bg-primary rounded-r-full"
                 />
@@ -91,6 +119,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <div className="text-left hidden lg:block">
                     <p className="text-sm font-medium leading-none">{user?.firstName || "User"}</p>
                     <p className="text-xs text-muted-foreground mt-1 truncate max-w-[120px]">{user?.email}</p>
+                    <div className="mt-1 flex gap-1">
+                      <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-sm">{user?.role || 'STUDENT'}</span>
+                      <span className="text-[10px] bg-accent/20 text-accent-foreground px-1.5 py-0.5 rounded-sm truncate max-w-[60px]">{user?.department || 'General'}</span>
+                    </div>
                   </div>
                 </div>
                 <ChevronDown className="w-4 h-4 text-muted-foreground hidden lg:block" />
@@ -147,7 +179,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <main className="flex-1 flex flex-col h-screen relative overflow-hidden pt-16 md:pt-0">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/10 rounded-full blur-[120px] translate-y-1/3 -translate-x-1/3 pointer-events-none" />
-        
+
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 z-10 custom-scrollbar">
           <AnimatePresence mode="wait">
             <motion.div

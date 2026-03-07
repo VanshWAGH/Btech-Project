@@ -46,6 +46,7 @@ export const documents = pgTable("documents", {
   content: text("content").notNull(),
   category: text("category"),
   uploadedBy: varchar("uploaded_by").notNull().references(() => users.id),
+  status: text("status").default("APPROVED"), // PENDING, APPROVED, REJECTED
   isPublic: boolean("is_public").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
@@ -65,6 +66,34 @@ export const queries = pgTable("queries", {
 }, (table) => [
   index("queries_tenant_idx").on(table.tenantId),
   index("queries_user_idx").on(table.userId),
+]);
+
+// Announcements - System or tenant level broadcasts
+export const announcements = pgTable("announcements", {
+  id: serial("id").primaryKey(),
+  tenantId: serial("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  department: text("department"), // if specific to a dept
+  targetRole: text("target_role"), // e.g. STUDENT, TEACHER or ALL
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("announcements_tenant_idx").on(table.tenantId),
+]);
+
+// Audit Logs - Security and operations logging
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  tenantId: serial("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id"),
+  details: text("details"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("audit_logs_tenant_idx").on(table.tenantId),
 ]);
 
 // ============================================
@@ -110,6 +139,28 @@ export const queriesRelations = relations(queries, ({ one }) => ({
   }),
 }));
 
+export const announcementsRelations = relations(announcements, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [announcements.tenantId],
+    references: [tenants.id],
+  }),
+  creator: one(users, {
+    fields: [announcements.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [auditLogs.tenantId],
+    references: [tenants.id],
+  }),
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
+
 // ============================================
 // BASE SCHEMAS
 // ============================================
@@ -121,6 +172,8 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({ id: tru
   uploadedBy: z.string().optional(),
 });
 export const insertQuerySchema = createInsertSchema(queries).omit({ id: true, createdAt: true });
+export const insertAnnouncementSchema = createInsertSchema(announcements).omit({ id: true, createdAt: true });
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
 
 // ============================================
 // EXPLICIT API CONTRACT TYPES
@@ -131,6 +184,8 @@ export type Tenant = typeof tenants.$inferSelect;
 export type TenantMember = typeof tenantMembers.$inferSelect;
 export type Document = typeof documents.$inferSelect;
 export type Query = typeof queries.$inferSelect;
+export type Announcement = typeof announcements.$inferSelect;
+export type AuditLog = typeof auditLogs.$inferSelect;
 
 // Request types
 export type CreateTenantRequest = z.infer<typeof insertTenantSchema>;

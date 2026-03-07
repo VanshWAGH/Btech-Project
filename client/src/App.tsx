@@ -11,6 +11,8 @@ import AuthPage from "@/pages/auth-page";
 import Dashboard from "@/pages/dashboard";
 import Documents from "@/pages/documents";
 import Tenants from "@/pages/tenants";
+import AnalyticsDashboard from "@/pages/analytics";
+import Announcements from "@/pages/announcements";
 
 // Wrapper for protected routes
 function ProtectedRoute({
@@ -56,6 +58,26 @@ function Router() {
         {() => <ProtectedRoute component={Documents} />}
       </Route>
       <Route path="/tenants">
+        {() => <ProtectedRoute component={Tenants} />}
+      </Route>
+      <Route path="/analytics">
+        {() => <ProtectedRoute component={AnalyticsDashboard} />}
+      </Route>
+      <Route path="/announcements">
+        {() => <ProtectedRoute component={Announcements} />}
+      </Route>
+
+      {/* Placeholders for new dash-board specific components requested */}
+      <Route path="/history">
+        {() => <ProtectedRoute component={Dashboard} />}
+      </Route>
+      <Route path="/approve-docs">
+        {() => <ProtectedRoute component={Documents} />}
+      </Route>
+      <Route path="/faculty-mgmt">
+        {() => <ProtectedRoute component={Tenants} />}
+      </Route>
+      <Route path="/admin-users">
         {() => <ProtectedRoute component={Tenants} />}
       </Route>
 

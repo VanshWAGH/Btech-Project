@@ -25,18 +25,18 @@ export async function registerRoutes(
     api.tenants.list.path,
     isAuthenticated,
     async (req, res) => {
-    try {
-      if (process.env.TENANT_SERVICE_BASE_URL) {
-        const tenants = await tenantServiceClient.listTenants(req);
-        return res.json(tenants);
-      }
+      try {
+        if (process.env.TENANT_SERVICE_BASE_URL) {
+          const tenants = await tenantServiceClient.listTenants(req);
+          return res.json(tenants);
+        }
 
-      const tenants = await storage.getAllTenants();
-      res.json(tenants);
-    } catch (error) {
-      console.error("Error fetching tenants:", error);
-      res.status(500).json({ message: "Failed to fetch tenants" });
-    }
+        const tenants = await storage.getAllTenants();
+        res.json(tenants);
+      } catch (error) {
+        console.error("Error fetching tenants:", error);
+        res.status(500).json({ message: "Failed to fetch tenants" });
+      }
     },
   );
 
@@ -64,38 +64,38 @@ export async function registerRoutes(
     api.tenants.create.path,
     isAuthenticated,
     async (req, res) => {
-    try {
-      const input = api.tenants.create.input.parse(req.body);
+      try {
+        const input = api.tenants.create.input.parse(req.body);
 
-      if (process.env.TENANT_SERVICE_BASE_URL) {
-        const tenant = await tenantServiceClient.createTenant(req, input);
-        return res.status(201).json(tenant);
+        if (process.env.TENANT_SERVICE_BASE_URL) {
+          const tenant = await tenantServiceClient.createTenant(req, input);
+          return res.status(201).json(tenant);
+        }
+
+        const tenant = await storage.createTenant(input);
+
+        // Add creator as admin
+        const userId = (req.user as any)?.id;
+        if (userId) {
+          await storage.addTenantMember({
+            tenantId: tenant.id,
+            userId,
+            role: "admin",
+            permissions: ["read", "write", "admin"],
+          });
+        }
+
+        res.status(201).json(tenant);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({
+            message: err.errors[0].message,
+            field: err.errors[0].path.join('.'),
+          });
+        }
+        console.error("Error creating tenant:", err);
+        res.status(500).json({ message: "Failed to create tenant" });
       }
-
-      const tenant = await storage.createTenant(input);
-
-      // Add creator as admin
-      const userId = (req.user as any)?.id;
-      if (userId) {
-        await storage.addTenantMember({
-          tenantId: tenant.id,
-          userId,
-          role: "admin",
-          permissions: ["read", "write", "admin"],
-        });
-      }
-
-      res.status(201).json(tenant);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
-        });
-      }
-      console.error("Error creating tenant:", err);
-      res.status(500).json({ message: "Failed to create tenant" });
-    }
     },
   );
 
@@ -109,14 +109,14 @@ export async function registerRoutes(
     withTenantContext(true),
     requirePermission("TENANT_MEMBER_READ", ["TENANT_ADMIN", "MANAGER"]),
     async (req, res) => {
-    try {
-      const tenantId = req.tenantContext!.tenantId;
-      const members = await storage.getTenantMembers(tenantId);
-      res.json(members);
-    } catch (error) {
-      console.error("Error fetching tenant members:", error);
-      res.status(500).json({ message: "Failed to fetch members" });
-    }
+      try {
+        const tenantId = req.tenantContext!.tenantId;
+        const members = await storage.getTenantMembers(tenantId);
+        res.json(members);
+      } catch (error) {
+        console.error("Error fetching tenant members:", error);
+        res.status(500).json({ message: "Failed to fetch members" });
+      }
     },
   );
 
@@ -126,24 +126,24 @@ export async function registerRoutes(
     withTenantContext(true),
     requirePermission("TENANT_MEMBER_WRITE", ["TENANT_ADMIN"]),
     async (req, res) => {
-    try {
-      const tenantId = req.tenantContext!.tenantId;
-      const input = api.tenantMembers.add.input.parse(req.body);
-      const member = await storage.addTenantMember({
-        tenantId,
-        ...input,
-      });
-      res.status(201).json(member);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+      try {
+        const tenantId = req.tenantContext!.tenantId;
+        const input = api.tenantMembers.add.input.parse(req.body);
+        const member = await storage.addTenantMember({
+          tenantId,
+          ...input,
         });
+        res.status(201).json(member);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({
+            message: err.errors[0].message,
+            field: err.errors[0].path.join('.'),
+          });
+        }
+        console.error("Error adding member:", err);
+        res.status(500).json({ message: "Failed to add member" });
       }
-      console.error("Error adding member:", err);
-      res.status(500).json({ message: "Failed to add member" });
-    }
     },
   );
 
@@ -156,17 +156,17 @@ export async function registerRoutes(
     isAuthenticated,
     withTenantContext(false),
     async (req, res) => {
-    try {
-      const tenantId =
-        req.tenantContext?.tenantId ??
-        (req.query.tenantId ? parseInt(req.query.tenantId as string) : undefined);
-      const category = req.query.category as string | undefined;
-      const docs = await storage.getDocuments(tenantId, category);
-      res.json(docs);
-    } catch (error) {
-      console.error("Error fetching documents:", error);
-      res.status(500).json({ message: "Failed to fetch documents" });
-    }
+      try {
+        const tenantId =
+          req.tenantContext?.tenantId ??
+          (req.query.tenantId ? parseInt(req.query.tenantId as string) : undefined);
+        const category = req.query.category as string | undefined;
+        const docs = await storage.getDocuments(tenantId, category);
+        res.json(docs);
+      } catch (error) {
+        console.error("Error fetching documents:", error);
+        res.status(500).json({ message: "Failed to fetch documents" });
+      }
     },
   );
 
@@ -190,26 +190,26 @@ export async function registerRoutes(
     withTenantContext(true),
     requirePermission("DOCUMENT_WRITE", ["TENANT_ADMIN", "MANAGER"]),
     async (req, res) => {
-    try {
-      const input = api.documents.create.input.extend({
-        tenantId: z.coerce.number().default(req.tenantContext!.tenantId),
-      }).parse(req.body);
-      const userId = (req.user as any)?.id;
-      const doc = await storage.createDocument({
-        ...input,
-        uploadedBy: userId,
-      });
-      res.status(201).json(doc);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+      try {
+        const input = api.documents.create.input.extend({
+          tenantId: z.coerce.number().default(req.tenantContext!.tenantId),
+        }).parse(req.body);
+        const userId = (req.user as any)?.id;
+        const doc = await storage.createDocument({
+          ...input,
+          uploadedBy: userId,
         });
+        res.status(201).json(doc);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({
+            message: err.errors[0].message,
+            field: err.errors[0].path.join('.'),
+          });
+        }
+        console.error("Error creating document:", err);
+        res.status(500).json({ message: "Failed to create document" });
       }
-      console.error("Error creating document:", err);
-      res.status(500).json({ message: "Failed to create document" });
-    }
     },
   );
 
@@ -221,6 +221,46 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting document:", error);
       res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  app.patch("/api/documents/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status } = req.body;
+      const doc = await storage.updateDocumentStatus(id, status);
+      res.json(doc);
+    } catch (error) {
+      console.error("Error updating document status:", error);
+      res.status(500).json({ message: "Failed to update document status" });
+    }
+  });
+
+  // ============================================
+  // ANNOUNCEMENTS ROUTES
+  // ============================================
+
+  app.get("/api/announcements", isAuthenticated, async (req, res) => {
+    try {
+      const tenantId = req.query.tenantId ? parseInt(req.query.tenantId as string) : undefined;
+      const items = await storage.getAnnouncements(tenantId);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching announcements:", error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  app.post("/api/announcements", isAuthenticated, async (req, res) => {
+    try {
+      const { title, content, targetRole, department, tenantId } = req.body;
+      const announcement = await storage.createAnnouncement({
+        title, content, targetRole, department, tenantId, createdBy: (req.user as any).id
+      });
+      res.status(201).json(announcement);
+    } catch (error) {
+      console.error("Error creating announcement:", error);
+      res.status(500).json({ message: "Failed to create announcement" });
     }
   });
 

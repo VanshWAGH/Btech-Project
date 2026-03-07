@@ -1,7 +1,8 @@
 import { AppLayout } from "@/components/layout/app-layout";
 import { useState } from "react";
-import { useDocuments, useCreateDocument, useDeleteDocument } from "@/hooks/use-documents";
+import { useDocuments, useCreateDocument, useDeleteDocument, useUpdateDocumentStatus } from "@/hooks/use-documents";
 import { useTenants } from "@/hooks/use-tenants";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,15 +13,24 @@ import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Documents() {
+  const { user } = useAuth();
   const { data: documents = [], isLoading } = useDocuments();
   const createDocument = useCreateDocument();
   const deleteDocument = useDeleteDocument();
+  const updateStatus = useUpdateDocumentStatus();
   const { toast } = useToast();
 
   const { data: tenants = [] } = useTenants();
   const [search, setSearch] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [formData, setFormData] = useState({ title: "", category: "", content: "" });
+  const [formData, setFormData] = useState({
+    title: "",
+    category: "",
+    content: "",
+    chunkSize: "1024",
+    overlap: "20",
+    strategy: "semantic"
+  });
 
   const filteredDocs = documents.filter(doc =>
     doc.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -46,8 +56,8 @@ export default function Documents() {
       {
         onSuccess: () => {
           setIsUploadOpen(false);
-          setFormData({ title: "", category: "", content: "" });
-          toast({ title: "Document uploaded successfully" });
+          setFormData({ title: "", category: "", content: "", chunkSize: "1024", overlap: "20", strategy: "semantic" });
+          toast({ title: "Document ingested successfully", description: `Processed into ${formData.chunkSize}-token chunks with ${formData.overlap}% overlap.` });
         },
         onError: (err) => {
           toast({ title: "Failed to upload", description: err.message, variant: "destructive" });
@@ -122,13 +132,57 @@ export default function Documents() {
                       />
                     </div>
                   </div>
+
+                  {/* Ingestion Pipeline Specs */}
+                  <div className="bg-white/5 border border-white/10 p-4 rounded-xl space-y-4">
+                    <h4 className="text-sm font-medium text-emerald-400 border-b border-white/10 pb-2">Knowledge Ingestion Pipeline</h4>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-muted-foreground">Chunk Size (Tokens)</label>
+                        <select
+                          className="w-full bg-black/40 border border-white/10 rounded-md p-2 text-xs text-white"
+                          value={formData.chunkSize}
+                          onChange={e => setFormData({ ...formData, chunkSize: e.target.value })}
+                        >
+                          <option value="512">512 Tokens</option>
+                          <option value="1024">1024 Tokens</option>
+                          <option value="2048">2048 Tokens</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-muted-foreground">Overlap %</label>
+                        <select
+                          className="w-full bg-black/40 border border-white/10 rounded-md p-2 text-xs text-white"
+                          value={formData.overlap}
+                          onChange={e => setFormData({ ...formData, overlap: e.target.value })}
+                        >
+                          <option value="10">10%</option>
+                          <option value="20">20%</option>
+                          <option value="30">30%</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-muted-foreground">Strategy</label>
+                        <select
+                          className="w-full bg-black/40 border border-white/10 rounded-md p-2 text-xs text-white"
+                          value={formData.strategy}
+                          onChange={e => setFormData({ ...formData, strategy: e.target.value })}
+                        >
+                          <option value="semantic">Semantic Chunk</option>
+                          <option value="recursive">Recursive Text</option>
+                          <option value="sentence">Sentence</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Content (Text)</label>
                     <Textarea
                       required
                       value={formData.content}
                       onChange={e => setFormData({ ...formData, content: e.target.value })}
-                      className="glass-input min-h-[200px] resize-y"
+                      className="glass-input min-h-[150px] resize-y"
                       placeholder="Paste document text here..."
                     />
                   </div>
@@ -153,6 +207,7 @@ export default function Documents() {
               <tr>
                 <th className="px-6 py-4 font-medium">Document</th>
                 <th className="px-6 py-4 font-medium">Category</th>
+                <th className="px-6 py-4 font-medium">Status</th>
                 <th className="px-6 py-4 font-medium">Date Added</th>
                 <th className="px-6 py-4 font-medium text-right">Actions</th>
               </tr>
@@ -196,19 +251,39 @@ export default function Documents() {
                         {doc.category || 'Uncategorized'}
                       </span>
                     </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${doc.status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                        doc.status === 'REJECTED' ? 'bg-destructive/10 text-destructive border border-destructive/20' :
+                          'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
+                        }`}>
+                        {doc.status || 'APPROVED'}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-muted-foreground">
                       {format(new Date(doc.createdAt), 'MMM d, yyyy')}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(doc.id)}
-                        disabled={deleteDocument.isPending}
-                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                    <td className="px-6 py-4 text-right flex justify-end gap-2">
+                      {doc.status !== 'APPROVED' && (user?.role === 'ADMIN' || user?.role === 'DEPARTMENT') && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => updateStatus.mutate({ id: doc.id, status: 'APPROVED' })}
+                          className="h-8 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                        >
+                          Approve
+                        </Button>
+                      )}
+                      {(user?.role === 'ADMIN' || user?.role === 'DEPARTMENT' || String(doc.uploadedBy) === String(user?.id)) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(doc.id)}
+                          disabled={deleteDocument.isPending}
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </td>
                   </motion.tr>
                 ))

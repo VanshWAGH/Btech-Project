@@ -76,7 +76,7 @@ export async function setupAuth(app: Express) {
 export function registerAuthRoutes(app: Express) {
     app.post("/api/register", async (req, res, next) => {
         try {
-            const { email, password } = req.body;
+            const { email, password, firstName, lastName, role, department } = req.body;
             const existingUser = await db.select().from(users).where(eq(users.email, email)).limit(1);
             if (existingUser.length > 0) {
                 return res.status(400).json({ message: "Email already exists" });
@@ -85,7 +85,7 @@ export function registerAuthRoutes(app: Express) {
             const hashedPassword = await hashPassword(password);
             const [user] = await db
                 .insert(users)
-                .values({ email, password: hashedPassword })
+                .values({ email, password: hashedPassword, firstName, lastName, role, department })
                 .returning();
 
             req.login(user, (err) => {

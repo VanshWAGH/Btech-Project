@@ -22,6 +22,9 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+  role: text("role").default("STUDENT"), // STUDENT, TEACHER, DEPARTMENT, ADMIN, RESEARCHER
+  department: text("department"),
+  clearanceLevel: text("clearance_level").default("LEVEL_1"), // LEVEL_1, LEVEL_2, LEVEL_3, LEVEL_MAX
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
