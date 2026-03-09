@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./auth";
+import { ensureCollection } from "./vectordb";
 
 const app = express();
 const httpServer = createServer(app);
@@ -63,6 +64,19 @@ app.use((req, res, next) => {
 (async () => {
   await setupAuth(app);
   registerAuthRoutes(app);
+
+  // ── Qdrant Cloud: ensure collection exists on startup ────
+  if (process.env.QDRANT_URL && process.env.QDRANT_API_KEY) {
+    try {
+      await ensureCollection();
+      log("Qdrant Cloud connected ✅", "vectordb");
+    } catch (err) {
+      log(`Qdrant unreachable — keyword fallback mode 🟡`, "vectordb");
+    }
+  } else {
+    log("QDRANT_URL not set — running in keyword-fallback mode 🟡", "vectordb");
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

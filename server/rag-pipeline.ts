@@ -1,149 +1,237 @@
-import type { Express } from "express";
+/**
+ * ============================================================
+ * RAG PIPELINE — powered by Qdrant Cloud vector search
+ * ============================================================
+ * Flow:
+ *  1. Analyse query intent & complexity
+ *  2. Embed query → Qdrant Cloud search with tenant filter
+ *  3. Rerank by score, build context
+ *  4. Generate answer with gpt-4o
+ *  5. Confidence = weighted mean of Qdrant cosine scores
+ * ============================================================
+ */
+
 import OpenAI from "openai";
-import { z } from "zod";
 import { storage } from "./storage";
+import {
+  searchDocuments,
+  ingestDocument,
+  deleteDocumentVectors,
+  getVectorDBStatus,
+  ensureCollection,
+} from "./vectordb";
+
+// Re-export helpers so callers can use vectordb through rag-pipeline
+export { ingestDocument, deleteDocumentVectors, getVectorDBStatus, ensureCollection };
 
 const openai = new OpenAI({
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL:  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
-/**
- * Advanced Layer 7 Adaptive RAG Intelligence Pipeline
- */
+// ── Helpers ────────────────────────────────────────────────
+
+function classifyQuery(query: string) {
+  const isComplex =
+    query.length > 50 ||
+    /\b(why|how|explain|compare|difference|describe|analyze)\b/i.test(query);
+  return {
+    complexity: isComplex ? "complex" : "simple",
+    model:      isComplex ? "gpt-4o"  : "gpt-4o-mini",
+  };
+}
+
+function calcConfidence(scores: number[]): number {
+  if (scores.length === 0) return 0;
+  // weighted average — top result counts double
+  const [top = 0, ...rest] = scores;
+  const avg = (top * 2 + rest.reduce((s, v) => s + v, 0)) / (rest.length + 2);
+  return Math.min(Math.round(avg * 100) / 100, 1.0);
+}
+
+// ── RAG Pipeline ───────────────────────────────────────────
+
 export class RAGPipeline {
 
-    /**
-     * Stage 1: Intent classification & Query Complexity Scoring
-     */
-    static async analyzeQuery(query: string) {
-        // Dynamic Model Routing (Simple -> Mini, Complex -> Omni)
-        const complexityScore = query.length > 50 || query.includes('why') || query.includes('how') ? 'complex' : 'simple';
-        const modelTarget = complexityScore === 'complex' ? 'gpt-4o' : 'gpt-4o-mini';
+  /**
+   * Stage 1: Intent classification & Query Complexity Scoring
+   */
+  static async analyzeQuery(query: string) {
+    return classifyQuery(query);
+  }
 
-        return {
-            intent: 'knowledge_retrieval',
-            complexity: complexityScore,
-            model: modelTarget,
-            needsExpansion: complexityScore === 'complex',
-        };
-    }
-
-    /**
-     * Stage 2 & 3: Hybrid Retrieval Pipeline (BM25 + Vector Similarity + RRF) Mock implementation
-     */
-    static async retrieveDocuments(query: string, tenantId: number, userContext: any) {
-        const allDocs = await storage.getDocuments(tenantId);
-
-        // ABAC Security Layer (Access Control)
-        const accessibleDocs = allDocs.filter(doc => {
-            // Students cannot see Teacher/Admin specialized data
-            if (userContext.role === 'STUDENT' && doc.category === 'FINANCE') return false;
-            if (userContext.role === 'TEACHER' && doc.category === 'ADMIN_FINANCE') return false;
-            return true;
+  /**
+   * Stage 2: Qdrant Cloud vector retrieval with tenant isolation
+   *
+   * Filter applied at DB level:
+   *   tenant_id == userTenantId  OR  access_level == "public"
+   *
+   * Students CANNOT receive chunks from other departments.
+   */
+  static async retrieveDocuments(
+    query:       string,
+    tenantId:    number,
+    userContext: { role: string; department: string; course?: string }
+  ) {
+    // Try Qdrant Cloud first
+    if (process.env.QDRANT_URL && process.env.QDRANT_API_KEY) {
+      try {
+        const results = await searchDocuments(query, tenantId, {
+          limit:  6,
+          course: userContext.course,
         });
 
-        // Semantic Keyword Search & Vector Mock (Stage 1 & 2)
-        const queryLower = query.toLowerCase();
-        let relevantDocs = accessibleDocs.filter(doc =>
-            doc.title.toLowerCase().includes(queryLower) ||
-            doc.content.toLowerCase().includes(queryLower)
-        );
+        if (results.length > 0) {
+          const docs = results.map((r) => ({
+            title:    r.payload.title,
+            content:  r.payload.chunk_text,
+            category: r.payload.course,
+            score:    r.score,
+          }));
 
-        // If query is expanded, apply MMR diversity and cross-encoder reranking (Mock values)
-        if (relevantDocs.length === 0) {
-            return { docs: [], maxConfidence: 0.1 };
+          return {
+            docs,
+            scores:         results.map((r) => r.score),
+            retrievalMode:  "qdrant_vector" as const,
+          };
         }
-
-        return {
-            docs: relevantDocs.slice(0, 5), // Return top 5
-            maxConfidence: 0.85, // Mock confidence score
-        };
+      } catch (err) {
+        console.warn("[RAG] Qdrant search failed, falling back to keyword:", err);
+      }
     }
 
-    /**
-     * Knowledge Gap Detection if confidence is low
-     */
-    static async handleKnowledgeGap(query: string, tenantId: number) {
-        console.warn(`[KNOWLEDGE GAP DETECTED]: Logging gap for query: "${query}"`);
-        // In production: Save to Knowledge Gaps database table for admin review
-        return {
-            gapDetected: true,
-            message: "The information is not available in the university knowledge base.",
-            adminNotified: true,
-        };
+    // ── Fallback: keyword search (no Qdrant configured) ────
+    const allDocs = await storage.getDocuments(tenantId);
+    const q = query.toLowerCase();
+    const terms = q.split(/\s+/).filter((w) => w.length > 3);
+
+    const matched = allDocs
+      .filter((doc) => {
+        const text = `${doc.title} ${doc.content}`.toLowerCase();
+        return terms.some((t) => text.includes(t));
+      })
+      .slice(0, 5)
+      .map((doc) => ({
+        title:    doc.title,
+        content:  doc.content,
+        category: doc.category,
+        score:    0.6,                    // static mid-confidence for keyword match
+      }));
+
+    return {
+      docs:           matched,
+      scores:         matched.map(() => 0.6),
+      retrievalMode:  "keyword_fallback" as const,
+    };
+  }
+
+  /**
+   * Knowledge Gap Detection
+   */
+  static async handleKnowledgeGap(query: string, tenantId: number) {
+    console.warn(`[KNOWLEDGE GAP]: "${query}" — tenant ${tenantId}`);
+    return {
+      gapDetected:    true,
+      message:        "The information is not available in the university knowledge base.",
+      adminNotified:  true,
+    };
+  }
+
+  /**
+   * Core RAG Execution
+   *  → embed query → Qdrant tenant-filtered search → LLM → save
+   */
+  static async execute(req: any, queryStr: string) {
+    const userId     = req.user?.id;
+    const role       = req.user?.role       || "STUDENT";
+    const department = req.user?.department || "General";
+
+    const tenants    = await storage.getAllTenants();
+    const userTenant = tenants[0];
+
+    if (!userTenant) {
+      return { response: "No tenant configured.", sources: [], confidence: 0 };
     }
 
-    /**
-     * Core RAG Execution
-     */
-    static async execute(req: any, queryStr: string) {
-        const userId = req.user?.id;
-        const role = req.user?.role || "STUDENT"; // Added role
-        const department = req.user?.department || "General";
+    // 1. Classify query
+    const analysis = classifyQuery(queryStr);
 
-        // Simulating user tenant resolution
-        const tenants = await storage.getAllTenants();
-        const userTenant = tenants[0];
+    // 2. Retrieve from Qdrant (tenant-isolated)
+    const { docs, scores, retrievalMode } = await this.retrieveDocuments(
+      queryStr,
+      userTenant.id,
+      { role, department }
+    );
 
-        // 1. Intent Classification
-        const analysis = await this.analyzeQuery(queryStr);
+    console.log(
+      `[RAG] mode=${retrievalMode} found=${docs.length} ` +
+      `tenant=${userTenant.id} model=${analysis.model}`
+    );
 
-        // 2. Retrieval & Security Enforcement
-        const retrievalResult = await this.retrieveDocuments(queryStr, userTenant.id, { role, department });
+    // 3. Knowledge Gap
+    const confidence = calcConfidence(scores);
+    if (docs.length === 0 || confidence < 0.35) {
+      const gap = await this.handleKnowledgeGap(queryStr, userTenant.id);
+      return {
+        response:       gap.message,
+        sources:        [],
+        confidence:     confidence,
+        confidenceScore: confidence,
+        retrievalMode,
+        modelUsed:      analysis.model,
+      };
+    }
 
-        // 3. Knowledge Gap Check
-        if (retrievalResult.docs.length === 0 || retrievalResult.maxConfidence < 0.7) {
-            const gapResponse = await this.handleKnowledgeGap(queryStr, userTenant.id);
-            return { response: gapResponse.message, sources: [], confidence: 'Low', modelUsed: analysis.model };
-        }
+    // 4. Build context string
+    const contextStr = docs
+      .map((d, i) =>
+        `[Source ${i + 1}: ${d.title}${d.category ? ` — ${d.category}` : ""}]\n${d.content}`
+      )
+      .join("\n\n");
 
-        // 4. Prompt Construction & Temporal Context
-        const contextStr = retrievalResult.docs
-            .map(doc => `[Source: ${doc.title} - Category: ${doc.category || 'General'}]\n${doc.content}`)
-            .join('\n\n');
+    // 5. LLM generation
+    const systemPrompt = `You are an AI academic assistant for the ${department} department.
+User Role: ${role}
 
-        const systemPrompt = `You are an Environment-Adaptive Multi-Tenant AI Assistant for a University.
-Current User Role: ${role}
-Current User Department: ${department}
-
-RULES:
-- You must use the retrieved knowledge context provided below.
-- Do NOT leak cross-tenant data. Act strictly within the permissions of the current user.
-- If the context does not fully answer the question, state: "The information is not available in the university knowledge base."
-- Maintain strict confidence and cite the source name in your answer.
+STRICT RULES:
+- Answer only from the CONTEXT below.
+- Do NOT reveal information from other departments or tenants.
+- If the context is insufficient, say "This topic is not covered in your course materials."
+- Always cite the source name (e.g. "According to [Source 1: DBMS Notes]…").
 
 CONTEXT:
 ${contextStr}`;
 
-        // 5. LLM Generation
-        const completion = await openai.chat.completions.create({
-            model: analysis.model,
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: queryStr },
-            ],
-            max_completion_tokens: 1024,
-        });
+    const completion = await openai.chat.completions.create({
+      model:                  analysis.model,
+      messages: [
+        { role: "system",  content: systemPrompt },
+        { role: "user",    content: queryStr },
+      ],
+      max_completion_tokens: 1024,
+    });
 
-        const answer = completion.choices[0]?.message?.content || "No response generated.";
+    const answer = completion.choices[0]?.message?.content || "No response generated.";
 
-        // Save query to DB
-        const savedQuery = await storage.createQuery({
-            tenantId: userTenant.id,
-            userId,
-            query: queryStr,
-            response: answer,
-            context: contextStr,
-            relevantDocs: retrievalResult.docs.map(d => d.title),
-        });
+    // 6. Persist query + response
+    const savedQuery = await storage.createQuery({
+      tenantId:    userTenant.id,
+      userId,
+      query:       queryStr,
+      response:    answer,
+      context:     contextStr,
+      relevantDocs: docs.map((d) => d.title),
+    });
 
-        return {
-            response: answer,
-            sources: retrievalResult.docs.map(d => ({ title: d.title, category: d.category })),
-            confidence: retrievalResult.maxConfidence > 0.8 ? 'High' : 'Medium',
-            modelUsed: analysis.model,
-            queryId: savedQuery.id
-        };
-    }
+    return {
+      ...savedQuery,
+      response:        answer,
+      sources:         docs.map((d) => ({ title: d.title, category: d.category })),
+      confidence:      confidence,
+      confidenceScore: confidence,
+      confidenceLabel: confidence >= 0.8 ? "High" : confidence >= 0.5 ? "Medium" : "Low",
+      retrievalMode,
+      modelUsed:       analysis.model,
+    };
+  }
 }

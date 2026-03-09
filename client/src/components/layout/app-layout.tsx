@@ -16,7 +16,15 @@ import {
   Megaphone,
   History,
   CheckCircle,
-  UserCog
+  UserCog,
+  Bot,
+  BookOpen,
+  Search,
+  MessageSquare,
+  Star,
+  Bell,
+  User,
+  GraduationCap
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -36,30 +44,38 @@ export function AppLayout({ children }: AppLayoutProps) {
   const userRole = user?.role?.toUpperCase() || "STUDENT";
 
   const navigation = [
-    // Shared
-    { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["STUDENT", "TEACHER", "DEPARTMENT", "ADMIN", "RESEARCHER"] },
+    // ── STUDENT ROUTES ──────────────────────────────
+    { name: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard, roles: ["STUDENT"] },
+    { name: "AI Chat Assistant", href: "/student/chat", icon: Bot, roles: ["STUDENT"] },
+    { name: "Course Materials", href: "/student/materials", icon: BookOpen, roles: ["STUDENT"] },
+    { name: "Knowledge Search", href: "/student/search", icon: Search, roles: ["STUDENT"] },
+    { name: "Announcements", href: "/student/announcements", icon: Megaphone, roles: ["STUDENT"] },
+    { name: "Ask Teacher", href: "/student/ask-teacher", icon: MessageSquare, roles: ["STUDENT"] },
+    { name: "Chat History", href: "/student/history", icon: History, roles: ["STUDENT"] },
+    { name: "Saved Answers", href: "/student/saved-answers", icon: Star, roles: ["STUDENT"] },
+    { name: "My Profile", href: "/student/profile", icon: User, roles: ["STUDENT"] },
 
-    // Student
-    { name: "Course Materials", href: "/documents", icon: Files, roles: ["STUDENT"] },
-    { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["STUDENT", "TEACHER", "DEPARTMENT"] },
-    { name: "Chat History", href: "/history", icon: History, roles: ["STUDENT"] },
-
-    // Teacher
+    // ── TEACHER ROUTES ───────────────────────────────
+    { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["TEACHER"] },
     { name: "Manage Materials", href: "/documents", icon: Files, roles: ["TEACHER"] },
+    { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["TEACHER"] },
     { name: "Student Questions", href: "/history", icon: History, roles: ["TEACHER"] },
+    { name: "Analytics", href: "/analytics", icon: Activity, roles: ["TEACHER"] },
 
-    // Department Admin
+    // ── DEPARTMENT ADMIN ROUTES ──────────────────────
+    { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["DEPARTMENT"] },
     { name: "Dept Knowledge Base", href: "/documents", icon: Files, roles: ["DEPARTMENT"] },
     { name: "Approve Documents", href: "/approve-docs", icon: CheckCircle, roles: ["DEPARTMENT"] },
     { name: "Faculty Management", href: "/faculty-mgmt", icon: UserCog, roles: ["DEPARTMENT"] },
+    { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["DEPARTMENT"] },
+    { name: "Analytics", href: "/analytics", icon: Activity, roles: ["DEPARTMENT"] },
 
-    // Super Admin
+    // ── SUPER ADMIN / RESEARCHER ROUTES ─────────────
+    { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["ADMIN", "RESEARCHER"] },
     { name: "Global Knowledge Base", href: "/documents", icon: Files, roles: ["ADMIN", "RESEARCHER"] },
     { name: "User Management", href: "/admin-users", icon: UserCog, roles: ["ADMIN"] },
     { name: "Tenant Management", href: "/tenants", icon: Users, roles: ["ADMIN"] },
-
-    // Analytics
-    { name: "Analytics Dashboard", href: "/analytics", icon: Activity, roles: ["ADMIN", "DEPARTMENT", "TEACHER"] }
+    { name: "Analytics Dashboard", href: "/analytics", icon: Activity, roles: ["ADMIN", "RESEARCHER"] },
   ].filter(item => item.roles.includes(userRole));
 
   const NavLinks = () => (
@@ -131,10 +147,20 @@ export function AppLayout({ children }: AppLayoutProps) {
             <DropdownMenuContent align="end" className="w-56 glass-panel border-white/10 shadow-2xl">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-white/5" />
-              <DropdownMenuItem className="cursor-pointer focus:bg-white/5">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </DropdownMenuItem>
+              {userRole === "STUDENT" ? (
+                <DropdownMenuItem className="cursor-pointer focus:bg-white/5" asChild>
+                  <Link href="/student/profile">
+                    <User className="w-4 h-4 mr-2" />
+                    My Profile
+                  </Link>
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem className="cursor-pointer focus:bg-white/5">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Settings
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator className="bg-white/5" />
               <DropdownMenuItem className="cursor-pointer text-destructive focus:bg-destructive/10" onClick={() => logout()}>
                 <LogOut className="w-4 h-4 mr-2" />
                 Log out

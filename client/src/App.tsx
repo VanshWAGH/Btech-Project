@@ -1,4 +1,5 @@
 import { Switch, Route, Redirect } from "wouter";
+import { lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -6,13 +7,33 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import NotFound from "@/pages/not-found";
 
-// Import Pages
+// Static imports for primary pages
 import AuthPage from "@/pages/auth-page";
 import Dashboard from "@/pages/dashboard";
 import Documents from "@/pages/documents";
 import Tenants from "@/pages/tenants";
 import AnalyticsDashboard from "@/pages/analytics";
 import Announcements from "@/pages/announcements";
+
+// Lazy-loaded Student pages
+const StudentDashboard = lazy(() => import("@/pages/student/student-dashboard"));
+const StudentChat = lazy(() => import("@/pages/student/student-chat"));
+const StudentMaterials = lazy(() => import("@/pages/student/student-materials"));
+const StudentSearch = lazy(() => import("@/pages/student/student-search"));
+const StudentAnnouncements = lazy(() => import("@/pages/student/student-announcements"));
+const StudentAskTeacher = lazy(() => import("@/pages/student/student-ask-teacher"));
+const StudentHistory = lazy(() => import("@/pages/student/student-history"));
+const StudentProfile = lazy(() => import("@/pages/student/student-profile"));
+const StudentSavedAnswers = lazy(() => import("@/pages/student/student-saved-answers"));
+
+// Page loading spinner
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+    </div>
+  );
+}
 
 // Wrapper for protected routes
 function ProtectedRoute({
@@ -22,35 +43,40 @@ function ProtectedRoute({
 }) {
   const { isAuthenticated, isLoading } = useAuth();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  if (isLoading) return <PageLoader />;
 
   if (!isAuthenticated) {
     return <Redirect to="/" />;
   }
 
-  return <Component />;
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <Component />
+    </Suspense>
+  );
 }
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  const defaultRedirect = () => {
+    if (isLoading) return <PageLoader />;
+    if (!isAuthenticated) return <AuthPage />;
+    const role = user?.role?.toUpperCase();
+    if (role === "STUDENT") return <Redirect to="/student/dashboard" />;
+    return <Redirect to="/dashboard" />;
+  };
 
   return (
     <Switch>
-      {/* Root redirect logic */}
+      {/* Root redirect */}
       <Route path="/">
-        {() => {
-          if (isLoading) return null;
-          return isAuthenticated ? <Redirect to="/dashboard" /> : <AuthPage />;
-        }}
+        {() => defaultRedirect()}
       </Route>
 
-      {/* Protected App Routes */}
+      {/* ============================================ */}
+      {/* ADMIN / TEACHER / DEPARTMENT ROUTES          */}
+      {/* ============================================ */}
       <Route path="/dashboard">
         {() => <ProtectedRoute component={Dashboard} />}
       </Route>
@@ -66,8 +92,6 @@ function Router() {
       <Route path="/announcements">
         {() => <ProtectedRoute component={Announcements} />}
       </Route>
-
-      {/* Placeholders for new dash-board specific components requested */}
       <Route path="/history">
         {() => <ProtectedRoute component={Dashboard} />}
       </Route>
@@ -79,6 +103,37 @@ function Router() {
       </Route>
       <Route path="/admin-users">
         {() => <ProtectedRoute component={Tenants} />}
+      </Route>
+
+      {/* ============================================ */}
+      {/* STUDENT TENANT ROUTES                         */}
+      {/* ============================================ */}
+      <Route path="/student/dashboard">
+        {() => <ProtectedRoute component={StudentDashboard} />}
+      </Route>
+      <Route path="/student/chat">
+        {() => <ProtectedRoute component={StudentChat} />}
+      </Route>
+      <Route path="/student/materials">
+        {() => <ProtectedRoute component={StudentMaterials} />}
+      </Route>
+      <Route path="/student/search">
+        {() => <ProtectedRoute component={StudentSearch} />}
+      </Route>
+      <Route path="/student/announcements">
+        {() => <ProtectedRoute component={StudentAnnouncements} />}
+      </Route>
+      <Route path="/student/ask-teacher">
+        {() => <ProtectedRoute component={StudentAskTeacher} />}
+      </Route>
+      <Route path="/student/history">
+        {() => <ProtectedRoute component={StudentHistory} />}
+      </Route>
+      <Route path="/student/profile">
+        {() => <ProtectedRoute component={StudentProfile} />}
+      </Route>
+      <Route path="/student/saved-answers">
+        {() => <ProtectedRoute component={StudentSavedAnswers} />}
       </Route>
 
       <Route component={NotFound} />
