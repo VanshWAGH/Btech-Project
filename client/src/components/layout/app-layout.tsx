@@ -24,12 +24,16 @@ import {
   Star,
   Bell,
   User,
-  GraduationCap
+  GraduationCap,
+  Calendar,
+  BookMarked,
+  Plus,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useQuery } from "@tanstack/react-query";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -40,14 +44,28 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Fetch notification count
+  const { data: notifData } = useQuery<any>({
+    queryKey: ["/api/notifications"],
+    queryFn: async () => {
+      const res = await fetch("/api/notifications", { credentials: "include" });
+      if (!res.ok) return { unreadCount: 0 };
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+  const unreadCount = notifData?.unreadCount || 0;
+
   // Determine valid links for the current user's role
   const userRole = user?.role?.toUpperCase() || "STUDENT";
 
   const navigation = [
     // ── STUDENT ROUTES ──────────────────────────────
     { name: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard, roles: ["STUDENT"] },
+    { name: "My Courses", href: "/student/courses", icon: GraduationCap, roles: ["STUDENT"] },
     { name: "AI Chat Assistant", href: "/student/chat", icon: Bot, roles: ["STUDENT"] },
     { name: "Course Materials", href: "/student/materials", icon: BookOpen, roles: ["STUDENT"] },
+    { name: "Academic Calendar", href: "/student/calendar", icon: Calendar, roles: ["STUDENT"] },
     { name: "Knowledge Search", href: "/student/search", icon: Search, roles: ["STUDENT"] },
     { name: "Announcements", href: "/student/announcements", icon: Megaphone, roles: ["STUDENT"] },
     { name: "Ask Teacher", href: "/student/ask-teacher", icon: MessageSquare, roles: ["STUDENT"] },
@@ -56,10 +74,10 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "My Profile", href: "/student/profile", icon: User, roles: ["STUDENT"] },
 
     // ── TEACHER ROUTES ───────────────────────────────
-    { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["TEACHER"] },
-    { name: "Manage Materials", href: "/documents", icon: Files, roles: ["TEACHER"] },
+    { name: "Dashboard", href: "/teacher/dashboard", icon: LayoutDashboard, roles: ["TEACHER"] },
+    { name: "My Courses", href: "/teacher/courses", icon: BookMarked, roles: ["TEACHER"] },
+    { name: "Academic Calendar", href: "/teacher/calendar", icon: Calendar, roles: ["TEACHER"] },
     { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["TEACHER"] },
-    { name: "Student Questions", href: "/history", icon: History, roles: ["TEACHER"] },
     { name: "Analytics", href: "/analytics", icon: Activity, roles: ["TEACHER"] },
 
     // ── DEPARTMENT ADMIN ROUTES ──────────────────────
@@ -77,6 +95,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Tenant Management", href: "/tenants", icon: Users, roles: ["ADMIN"] },
     { name: "Analytics Dashboard", href: "/analytics", icon: Activity, roles: ["ADMIN", "RESEARCHER"] },
   ].filter(item => item.roles.includes(userRole));
+
+
 
   const NavLinks = () => (
     <>
@@ -117,8 +137,18 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-2">
+        <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
           <NavLinks />
+          {/* Notifications Bell in nav */}
+          <Link href="/notifications">
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-300 relative ${location === '/notifications' ? 'bg-primary/20 text-primary font-medium shadow-inner border border-primary/20' : 'text-muted-foreground hover:text-foreground hover:bg-white/5'}`}>
+              <Bell className={`w-5 h-5 ${location === '/notifications' ? 'text-primary' : ''}`} />
+              <span>Notifications</span>
+              {unreadCount > 0 && (
+                <span className="ml-auto w-5 h-5 bg-primary rounded-full text-[10px] font-bold text-white flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              )}
+            </div>
+          </Link>
         </nav>
 
         <div className="p-4 border-t border-white/5">
@@ -160,6 +190,13 @@ export function AppLayout({ children }: AppLayoutProps) {
                   Settings
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem className="cursor-pointer focus:bg-white/5" asChild>
+                <Link href="/notifications">
+                  <Bell className="w-4 h-4 mr-2" />
+                  Notifications
+                  {unreadCount > 0 && <span className="ml-auto text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">{unreadCount}</span>}
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-white/5" />
               <DropdownMenuItem className="cursor-pointer text-destructive focus:bg-destructive/10" onClick={() => logout()}>
                 <LogOut className="w-4 h-4 mr-2" />
@@ -176,9 +213,19 @@ export function AppLayout({ children }: AppLayoutProps) {
           <BrainCircuit className="w-6 h-6 text-primary" />
           <h1 className="font-display font-bold">NexusRAG</h1>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link href="/notifications">
+            <button className="relative p-2 rounded-xl hover:bg-white/10 transition-colors">
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-primary rounded-full text-[9px] font-bold text-white flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              )}
+            </button>
+          </Link>
+          <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </Button>
+        </div>
       </div>
 
       {/* Mobile Menu */}

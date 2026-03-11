@@ -14,6 +14,7 @@ import Documents from "@/pages/documents";
 import Tenants from "@/pages/tenants";
 import AnalyticsDashboard from "@/pages/analytics";
 import Announcements from "@/pages/announcements";
+import Notifications from "@/pages/notifications";
 
 // Lazy-loaded Student pages
 const StudentDashboard = lazy(() => import("@/pages/student/student-dashboard"));
@@ -25,6 +26,16 @@ const StudentAskTeacher = lazy(() => import("@/pages/student/student-ask-teacher
 const StudentHistory = lazy(() => import("@/pages/student/student-history"));
 const StudentProfile = lazy(() => import("@/pages/student/student-profile"));
 const StudentSavedAnswers = lazy(() => import("@/pages/student/student-saved-answers"));
+const StudentCourses = lazy(() => import("@/pages/student/student-courses"));
+const StudentCourseNotes = lazy(() => import("@/pages/student/student-course-notes"));
+const StudentCalendar = lazy(() => import("@/pages/student/student-calendar"));
+
+// Lazy-loaded Teacher pages
+const TeacherDashboard = lazy(() => import("@/pages/teacher/teacher-dashboard"));
+const TeacherCourses = lazy(() => import("@/pages/teacher/teacher-courses"));
+const TeacherCourseDetail = lazy(() => import("@/pages/teacher/teacher-course-detail"));
+const TeacherCourseNotes = lazy(() => import("@/pages/teacher/teacher-course-notes"));
+const TeacherCalendar = lazy(() => import("@/pages/teacher/teacher-calendar"));
 
 // Page loading spinner
 function PageLoader() {
@@ -64,6 +75,7 @@ function Router() {
     if (!isAuthenticated) return <AuthPage />;
     const role = user?.role?.toUpperCase();
     if (role === "STUDENT") return <Redirect to="/student/dashboard" />;
+    if (role === "TEACHER") return <Redirect to="/teacher/dashboard" />;
     return <Redirect to="/dashboard" />;
   };
 
@@ -75,7 +87,7 @@ function Router() {
       </Route>
 
       {/* ============================================ */}
-      {/* ADMIN / TEACHER / DEPARTMENT ROUTES          */}
+      {/* ADMIN / DEPARTMENT ROUTES                    */}
       {/* ============================================ */}
       <Route path="/dashboard">
         {() => <ProtectedRoute component={Dashboard} />}
@@ -92,6 +104,9 @@ function Router() {
       <Route path="/announcements">
         {() => <ProtectedRoute component={Announcements} />}
       </Route>
+      <Route path="/notifications">
+        {() => <ProtectedRoute component={Notifications} />}
+      </Route>
       <Route path="/history">
         {() => <ProtectedRoute component={Dashboard} />}
       </Route>
@@ -103,6 +118,25 @@ function Router() {
       </Route>
       <Route path="/admin-users">
         {() => <ProtectedRoute component={Tenants} />}
+      </Route>
+
+      {/* ============================================ */}
+      {/* TEACHER ROUTES                               */}
+      {/* ============================================ */}
+      <Route path="/teacher/dashboard">
+        {() => <ProtectedRoute component={TeacherDashboard} />}
+      </Route>
+      <Route path="/teacher/courses/:id/notes">
+        {() => <ProtectedRoute component={TeacherCourseNotes} />}
+      </Route>
+      <Route path="/teacher/courses/:id">
+        {() => <ProtectedRoute component={TeacherCourseDetail} />}
+      </Route>
+      <Route path="/teacher/courses">
+        {() => <ProtectedRoute component={TeacherCourses} />}
+      </Route>
+      <Route path="/teacher/calendar">
+        {() => <ProtectedRoute component={TeacherCalendar} />}
       </Route>
 
       {/* ============================================ */}
@@ -134,6 +168,15 @@ function Router() {
       </Route>
       <Route path="/student/saved-answers">
         {() => <ProtectedRoute component={StudentSavedAnswers} />}
+      </Route>
+      <Route path="/student/courses">
+        {() => <ProtectedRoute component={StudentCourses} />}
+      </Route>
+      <Route path="/student/course/:id/notes">
+        {() => <ProtectedRoute component={StudentCourseNotes} />}
+      </Route>
+      <Route path="/student/calendar">
+        {() => <ProtectedRoute component={StudentCalendar} />}
       </Route>
 
       <Route component={NotFound} />

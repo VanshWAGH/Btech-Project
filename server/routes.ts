@@ -700,6 +700,397 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
     }
   });
 
+  // ============================================
+  // COURSE ROUTES (Teacher CRUD + Student Read)
+  // ============================================
+
+  // Get all courses (optionally filtered)
+  app.get("/api/courses", isAuthenticated, async (req, res) => {
+    try {
+      const department = req.query.department as string | undefined;
+      const teacherIdRaw = req.query.teacherId as string | undefined;
+      const teacherId = teacherIdRaw ? parseInt(teacherIdRaw) : undefined;
+      const tenants = await storage.getAllTenants();
+      const tenantId = tenants[0]?.id;
+      const courseList = await storage.getCourses(tenantId, department, teacherId);
+      res.json(courseList);
+    } catch (err) {
+      console.error("Error fetching courses:", err);
+      res.status(500).json({ message: "Failed to fetch courses" });
+    }
+  });
+
+  // Get single course
+  app.get("/api/courses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const course = await storage.getCourse(id);
+      if (!course) return res.status(404).json({ message: "Course not found" });
+      res.json(course);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch course" });
+    }
+  });
+
+  // Create course (Teacher only)
+  app.post("/api/courses", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      const userRole = (req.user as any)?.role?.toUpperCase();
+      if (!["TEACHER", "ADMIN", "DEPARTMENT"].includes(userRole)) {
+        return res.status(403).json({ message: "Only teachers can create courses" });
+      }
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      const course = await storage.createCourse({
+        ...req.body,
+        teacherId: userId,
+        tenantId,
+      });
+      // Notify enrolled students (or all students of the department) about new course
+      const allMembers = await storage.getTenantMembers(tenantId);
+      const students = allMembers.filter((m: any) => m.role?.toUpperCase() === "STUDENT");
+      await Promise.all(students.map((s: any) =>
+        storage.createNotification({
+          userId: s.userId,
+          tenantId,
+          type: "new_course",
+          title: "New Course Launched!",
+          message: `A new course "${course.courseName}" has been launched in ${course.department}`,
+          relatedId: course.id,
+        }).catch(() => {})
+      ));
+      res.status(201).json(course);
+    } catch (err) {
+      console.error("Error creating course:", err);
+      res.status(500).json({ message: "Failed to create course" });
+    }
+  });
+
+  // Update course
+  app.put("/api/courses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = (req.user as any)?.id;
+      const existing = await storage.getCourse(id);
+      if (!existing) return res.status(404).json({ message: "Course not found" });
+      if (existing.teacherId !== userId && !(req.user as any)?.isSuperAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const course = await storage.updateCourse(id, req.body);
+      res.json(course);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update course" });
+    }
+  });
+
+  // Delete course
+  app.delete("/api/courses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCourse(id);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete course" });
+    }
+  });
+
+  // ============================================
+  // ENROLLMENT ROUTES
+  // ============================================
+
+  // Get enrolled students for a course
+  app.get("/api/courses/:id/students", isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const students = await storage.getEnrolledStudents(courseId);
+      res.json(students);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch enrolled students" });
+    }
+  });
+
+  // Enroll student in course
+  app.post("/api/courses/:id/enroll", isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const userId = (req.user as any)?.id;
+      const targetStudentId = req.body.studentId || userId; // teacher enrolls manually or student self-enrolls
+
+      const alreadyEnrolled = await storage.isEnrolled(courseId, targetStudentId);
+      if (alreadyEnrolled) {
+        return res.status(400).json({ message: "Student is already enrolled" });
+      }
+
+      const enrollment = await storage.enrollStudent(courseId, targetStudentId);
+      res.status(201).json(enrollment);
+    } catch (err) {
+      console.error("Enroll error:", err);
+      res.status(500).json({ message: "Failed to enroll student" });
+    }
+  });
+
+  // Unenroll student
+  app.delete("/api/courses/:id/enroll/:studentId", isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const studentId = parseInt(req.params.studentId);
+      await storage.unenrollStudent(courseId, studentId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to unenroll student" });
+    }
+  });
+
+  // Get student's enrolled courses
+  app.get("/api/student/courses", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      const enrollments = await storage.getStudentEnrollments(userId);
+      res.json(enrollments);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch enrollments" });
+    }
+  });
+
+  // ============================================
+  // COURSE NOTES ROUTES
+  // ============================================
+
+  // Get notes for a course
+  app.get("/api/courses/:id/notes", isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const topic = req.query.topic as string | undefined;
+      const notes = await storage.getCourseNotes(courseId, topic);
+      res.json(notes);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch notes" });
+    }
+  });
+
+  // Upload note to course
+  app.post("/api/courses/:id/notes", isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const userId = (req.user as any)?.id;
+      const note = await storage.createCourseNote({
+        ...req.body,
+        courseId,
+        uploadedBy: userId,
+      });
+
+      // Notify enrolled students about new note
+      const students = await storage.getEnrolledStudents(courseId);
+      const course = await storage.getCourse(courseId);
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      await Promise.all(students.map((s: any) =>
+        storage.createNotification({
+          userId: s.studentId,
+          tenantId,
+          type: "new_note",
+          title: "New Study Material Uploaded",
+          message: `New note "${note.title}" uploaded in ${course?.courseName || "your course"}`,
+          relatedId: note.id,
+        }).catch(() => {})
+      ));
+
+      res.status(201).json(note);
+    } catch (err) {
+      console.error("Error uploading note:", err);
+      res.status(500).json({ message: "Failed to upload note" });
+    }
+  });
+
+  // Update note metadata
+  app.put("/api/notes/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const note = await storage.updateCourseNote(id, req.body);
+      res.json(note);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update note" });
+    }
+  });
+
+  // Delete note
+  app.delete("/api/notes/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCourseNote(id);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete note" });
+    }
+  });
+
+  // ============================================
+  // CALENDAR EVENT ROUTES
+  // ============================================
+
+  // Get calendar events
+  app.get("/api/calendar", isAuthenticated, async (req, res) => {
+    try {
+      const department = req.query.department as string | undefined;
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      const events = await storage.getCalendarEvents(tenantId, department);
+      res.json(events);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch calendar events" });
+    }
+  });
+
+  // Create calendar event (Teacher/Admin only)
+  app.post("/api/calendar", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      const userRole = (req.user as any)?.role?.toUpperCase();
+      if (!["TEACHER", "ADMIN", "DEPARTMENT"].includes(userRole)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      const event = await storage.createCalendarEvent({
+        ...req.body,
+        tenantId,
+        createdBy: userId,
+        eventDate: new Date(req.body.eventDate),
+      });
+
+      // Notify all tenant members in the department
+      const allMembers = await storage.getTenantMembers(tenantId);
+      const targetMembers = allMembers.filter((m: any) =>
+        !req.body.department || (m as any).department === req.body.department
+      );
+      await Promise.all(targetMembers.map((m: any) =>
+        storage.createNotification({
+          userId: m.userId,
+          tenantId,
+          type: "new_event",
+          title: "New Academic Calendar Event",
+          message: `"${event.title}" scheduled on ${new Date(event.eventDate).toLocaleDateString()}`,
+          relatedId: event.id,
+        }).catch(() => {})
+      ));
+
+      res.status(201).json(event);
+    } catch (err) {
+      console.error("Error creating event:", err);
+      res.status(500).json({ message: "Failed to create event" });
+    }
+  });
+
+  // Update calendar event
+  app.put("/api/calendar/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const data = req.body.eventDate
+        ? { ...req.body, eventDate: new Date(req.body.eventDate) }
+        : req.body;
+      const event = await storage.updateCalendarEvent(id, data);
+      res.json(event);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update event" });
+    }
+  });
+
+  // Delete calendar event
+  app.delete("/api/calendar/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCalendarEvent(id);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete event" });
+    }
+  });
+
+  // ============================================
+  // NOTIFICATION ROUTES
+  // ============================================
+
+  // Get user notifications
+  app.get("/api/notifications", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      const notifs = await storage.getUserNotifications(userId);
+      const unreadCount = notifs.filter((n: any) => !n.isRead).length;
+      res.json({ notifications: notifs, unreadCount });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  // Mark notification as read
+  app.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.markNotificationRead(id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to mark notification" });
+    }
+  });
+
+  // Mark all notifications as read
+  app.patch("/api/notifications/read-all", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      await storage.markAllNotificationsRead(userId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to mark all notifications" });
+    }
+  });
+
+  // ============================================
+  // TEACHER DASHBOARD STATS
+  // ============================================
+  app.get("/api/teacher/stats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+
+      const [teacherCourses, allDocs, recentQueries, upcomingEvents] = await Promise.all([
+        storage.getCourses(tenantId, undefined, userId),
+        storage.getDocuments(tenantId),
+        storage.getQueries(tenantId),
+        storage.getCalendarEvents(tenantId, (req.user as any)?.department),
+      ]);
+
+      // Count total enrolled students across all teacher's courses
+      let totalEnrolled = 0;
+      for (const c of teacherCourses) {
+        const students = await storage.getEnrolledStudents(c.id);
+        totalEnrolled += students.length;
+      }
+
+      // Get notes count across teacher's courses
+      let totalNotes = 0;
+      for (const c of teacherCourses) {
+        const notes = await storage.getCourseNotes(c.id);
+        totalNotes += notes.length;
+      }
+
+      const now = new Date();
+      const upcoming = upcomingEvents.filter((e: any) => new Date(e.eventDate) >= now).slice(0, 5);
+
+      res.json({
+        totalCourses: teacherCourses.length,
+        totalStudentsEnrolled: totalEnrolled,
+        documentsUploaded: totalNotes,
+        recentStudentActivity: recentQueries.slice(0, 5),
+        upcomingEvents: upcoming,
+      });
+    } catch (err) {
+      console.error("Teacher stats error:", err);
+      res.status(500).json({ message: "Failed to fetch teacher stats" });
+    }
+  });
+
   // Seed database with initial data
   await seedDatabase();
 
