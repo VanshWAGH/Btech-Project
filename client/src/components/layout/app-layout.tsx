@@ -2,21 +2,39 @@ import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  BrainCircuit, 
-  LayoutDashboard, 
-  Files, 
-  Users, 
-  Settings, 
+import {
+  BrainCircuit,
+  LayoutDashboard,
+  Files,
+  Users,
+  Settings,
   LogOut,
   ChevronDown,
+  ChevronRight,
   Menu,
-  X
+  X,
+  Activity,
+  Megaphone,
+  History,
+  CheckCircle,
+  UserCog,
+  Bot,
+  BookOpen,
+  Search,
+  MessageSquare,
+  Star,
+  Bell,
+  User,
+  GraduationCap,
+  Calendar,
+  BookMarked,
+  Plus,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useQuery } from "@tanstack/react-query";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -27,142 +45,279 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Fetch notification count and list
+  const { data: notifData } = useQuery<any>({
+    queryKey: ["/api/notifications"],
+    queryFn: async () => {
+      const res = await fetch("/api/notifications", { credentials: "include" });
+      if (!res.ok) return { unreadCount: 0, notifications: [] };
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+  const unreadCount = notifData?.unreadCount || 0;
+  const notifications = notifData?.notifications || [];
+
+  // Determine valid links for the current user's role
+  const userRole = user?.role?.toUpperCase() || "STUDENT";
+
   const navigation = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Documents", href: "/documents", icon: Files },
-    { name: "Tenants", href: "/tenants", icon: Users },
-  ];
+    // ── STUDENT ROUTES ──────────────────────────────
+    { name: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard, roles: ["STUDENT"] },
+    { name: "My Courses", href: "/student/courses", icon: GraduationCap, roles: ["STUDENT"] },
+    { name: "AI Chat Assistant", href: "/student/chat", icon: Bot, roles: ["STUDENT"] },
+    { name: "Course Materials", href: "/student/materials", icon: BookOpen, roles: ["STUDENT"] },
+    { name: "Academic Calendar", href: "/student/calendar", icon: Calendar, roles: ["STUDENT"] },
+    { name: "Knowledge Search", href: "/student/search", icon: Search, roles: ["STUDENT"] },
+    { name: "Announcements", href: "/student/announcements", icon: Megaphone, roles: ["STUDENT"] },
+    { name: "Ask Teacher", href: "/student/ask-teacher", icon: MessageSquare, roles: ["STUDENT"] },
+    { name: "Chat History", href: "/student/history", icon: History, roles: ["STUDENT"] },
+    { name: "Saved Answers", href: "/student/saved-answers", icon: Star, roles: ["STUDENT"] },
+    { name: "My Profile", href: "/student/profile", icon: User, roles: ["STUDENT"] },
+
+    // ── TEACHER ROUTES ───────────────────────────────
+    { name: "Dashboard", href: "/teacher/dashboard", icon: LayoutDashboard, roles: ["TEACHER"] },
+    { name: "My Courses", href: "/teacher/courses", icon: BookMarked, roles: ["TEACHER"] },
+    { name: "Academic Calendar", href: "/teacher/calendar", icon: Calendar, roles: ["TEACHER"] },
+    { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["TEACHER"] },
+    { name: "Analytics", href: "/analytics", icon: Activity, roles: ["TEACHER"] },
+
+    // ── UNIVERSITY ADMIN ROUTES ──────────────────────
+    { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "University KB", href: "/documents", icon: Files, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "Approve Documents", href: "/approve-docs", icon: CheckCircle, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "Faculty & Students", href: "/faculty-mgmt", icon: UserCog, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "University Settings", href: "/university-mgmt", icon: Settings, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "Academic Calendar", href: "/calendar-mgmt", icon: Calendar, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "Analytics", href: "/analytics", icon: Activity, roles: ["UNIVERSITY_ADMIN"] },
+
+    // ── SUPER ADMIN ROUTES ─────────────
+    { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["ADMIN"] },
+    { name: "Global Knowledge Base", href: "/documents", icon: Files, roles: ["ADMIN"] },
+    { name: "User Management", href: "/admin-users", icon: UserCog, roles: ["ADMIN"] },
+    { name: "Tenant Management", href: "/tenants", icon: Users, roles: ["ADMIN"] },
+    { name: "Analytics Dashboard", href: "/analytics", icon: Activity, roles: ["ADMIN"] },
+  ].filter(item => item.roles.includes(userRole));
 
   const NavLinks = () => (
-    <>
+    <div className="space-y-0.5">
       {navigation.map((item) => {
         const isActive = location === item.href;
         return (
           <Link key={item.name} href={item.href}>
-            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-300 ${
-              isActive 
-                ? "bg-primary/20 text-primary font-medium shadow-inner border border-primary/20" 
-                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-            }`}>
-              <item.icon className={`w-5 h-5 ${isActive ? "text-primary" : ""}`} />
-              <span>{item.name}</span>
-              {isActive && (
-                <motion.div 
-                  layoutId="active-nav-indicator"
-                  className="absolute left-0 w-1 h-8 bg-primary rounded-r-full"
-                />
+            <div
+              className={`flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm cursor-pointer ${
+                isActive
+                  ? "bg-[#e9ecef]/80 text-[#0f6cb6] font-bold border-l-4 border-[#0f6cb6]"
+                  : "text-[#0f6cb6] hover:bg-[#e9ecef]/50 hover:underline"
+              }`}
+            >
+              {isActive ? (
+                <ChevronDown className="w-3 h-3 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />
               )}
+              <span className="truncate">{item.name}</span>
             </div>
           </Link>
         );
       })}
-    </>
+    </div>
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-72 glass border-r border-white/5 z-20">
-        <div className="p-6 flex items-center gap-3 border-b border-white/5">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20">
-            <BrainCircuit className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-lg leading-tight">NexusRAG</h1>
-            <p className="text-xs text-muted-foreground">Multi-Tenant Engine</p>
-          </div>
+    <div className="min-h-screen text-foreground flex flex-col font-sans relative bg-[#f8f9fa]">
+      {/* Background image overlay for an academic, professional feel */}
+      <div 
+        className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat opacity-[0.04] pointer-events-none" 
+        style={{ backgroundImage: "url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&q=80&w=2000')" }}
+      />
+      
+      {/* Moodle-style Top Navigation Bar */}
+      <header className="bg-white border-b border-[#dee2e6] h-[60px] flex items-center justify-between px-4 sticky top-0 z-40 shadow-sm relative">
+        <div className="flex items-center gap-6">
+          <Link href={navigation[0]?.href || "/dashboard"}>
+            <div className="flex items-center gap-2 cursor-pointer">
+              <div className="w-9 h-9 flex items-center justify-center">
+                 {/* Replaced Icon with a more academic/moodle logo placeholder style */}
+                 <div className="w-8 h-8 rounded-full bg-[#f8f9fa] border border-[#0f6cb6]/30 flex items-center justify-center text-[#0f6cb6] font-bold shadow-sm">
+                    M
+                 </div>
+              </div>
+              <span className="font-semibold text-xl tracking-tight text-[#0f6cb6]">Moodle</span>
+            </div>
+          </Link>
+          
+          <nav className="hidden md:flex items-center gap-5 text-sm font-medium">
+            <Link href={navigation[0]?.href || "/dashboard"}>
+              <span className="text-[#212529] hover:text-[#0f6cb6] hover:underline cursor-pointer">Dashboard</span>
+            </Link>
+            <Link href="/student/courses">
+              <span className="text-[#212529] hover:text-[#0f6cb6] hover:underline cursor-pointer">My Courses</span>
+            </Link>
+            <Link href="/documents">
+              <span className="text-[#212529] hover:text-[#0f6cb6] hover:underline cursor-pointer">Site features</span>
+            </Link>
+          </nav>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-2">
-          <NavLinks />
-        </nav>
+        <div className="flex items-center gap-2 md:gap-4">
+          <Button variant="ghost" size="icon" className="md:hidden text-[#495057]" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </Button>
+          
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hidden md:flex hover:bg-[#e9ecef]/50">
+            <Search className="w-4 h-4 text-[#495057]" />
+          </Button>
 
-        <div className="p-4 border-t border-white/5">
+          {/* Functional Notification Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="w-full flex justify-between items-center h-14 px-3 hover:bg-white/5">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-9 w-9 border border-primary/20 shadow-sm">
-                    <AvatarImage src={user?.profileImageUrl || ""} />
-                    <AvatarFallback className="bg-primary/10 text-primary font-medium">
-                      {user?.firstName?.charAt(0) || user?.email?.charAt(0) || "U"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="text-left hidden lg:block">
-                    <p className="text-sm font-medium leading-none">{user?.firstName || "User"}</p>
-                    <p className="text-xs text-muted-foreground mt-1 truncate max-w-[120px]">{user?.email}</p>
-                  </div>
-                </div>
-                <ChevronDown className="w-4 h-4 text-muted-foreground hidden lg:block" />
+              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full relative hover:bg-[#e9ecef]/50">
+                <Bell className="w-4 h-4 text-[#495057]" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 text-[9px] font-bold flex items-center justify-center bg-red-600 text-white rounded-full">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 glass-panel border-white/10 shadow-2xl">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-white/5" />
-              <DropdownMenuItem className="cursor-pointer focus:bg-white/5">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer text-destructive focus:bg-destructive/10" onClick={() => logout()}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Log out
+            <DropdownMenuContent align="end" className="w-[300px] bg-white border-[#dee2e6] shadow-lg p-0">
+              <div className="px-4 py-3 border-b border-[#dee2e6] bg-[#f8f9fa] flex justify-between items-center">
+                <span className="font-semibold text-[15px] text-[#212529]">Notifications</span>
+                {unreadCount > 0 && <span className="text-xs text-primary cursor-pointer hover:underline">Mark all as read</span>}
+              </div>
+              <div className="max-h-[300px] overflow-y-auto">
+                {notifications.length > 0 ? (
+                  notifications.map((n: any, i: number) => (
+                    <div key={i} className="px-4 py-3 border-b border-[#e9ecef] hover:bg-[#f8f9fa] cursor-pointer text-sm">
+                      <div className="font-medium text-[#212529]">{n.title || "New Notification"}</div>
+                      <div className="text-muted-foreground text-xs mt-1 truncate">{n.message || "You have a new update."}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                    You have no notifications.
+                  </div>
+                )}
+              </div>
+              <div className="px-4 py-2 border-t border-[#dee2e6] text-center bg-[#f8f9fa]">
+                <Link href="/notifications">
+                  <span className="text-xs text-primary hover:underline cursor-pointer font-medium">View all notifications</span>
+                </Link>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="px-2 h-10 hover:bg-[#e9ecef]/50 font-normal flex items-center gap-2 border-none">
+                <span className="hidden lg:inline text-sm text-[#212529]">
+                  {user?.id ? `${user.id} _${user.firstName?.toUpperCase()}_${user.lastName?.toUpperCase()}` : "User"}
+                </span>
+                <Avatar className="h-8 w-8 border border-[#dee2e6] shadow-sm">
+                  <AvatarImage src={user?.profileImageUrl || ""} />
+                  <AvatarFallback className="bg-[#e9ecef] text-[#495057] text-xs font-semibold shadow-inner">
+                    {user?.firstName?.charAt(0) || user?.email?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <ChevronDown className="w-3 h-3 text-[#495057] opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 bg-white border-[#dee2e6] shadow-md">
+              <DropdownMenuLabel className="py-2">
+                <span className="text-[#212529] font-semibold">{user?.firstName} {user?.lastName}</span>
+                <div className="text-[11px] text-muted-foreground font-normal mt-0.5 truncate">{user?.email}</div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-[#dee2e6]" />
+              {userRole === "STUDENT" ? (
+                <DropdownMenuItem className="cursor-pointer hover:bg-[#e9ecef]" asChild>
+                  <Link href="/student/profile">
+                    <User className="w-4 h-4 mr-2 text-[#495057]" />
+                    <span className="text-[#212529]">Profile</span>
+                  </Link>
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem className="cursor-pointer hover:bg-[#e9ecef]">
+                  <Settings className="w-4 h-4 mr-2 text-[#495057]" />
+                  <span className="text-[#212529]">Preferences</span>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator className="bg-[#dee2e6]" />
+              <DropdownMenuItem className="cursor-pointer hover:bg-[#e9ecef]" onClick={() => logout()}>
+                <LogOut className="w-4 h-4 mr-2 text-red-600" />
+                <span className="text-[#212529]">Log out</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </aside>
+      </header>
 
-      {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 glass z-30 flex items-center justify-between px-4 border-b border-white/5">
-        <div className="flex items-center gap-2">
-          <BrainCircuit className="w-6 h-6 text-primary" />
-          <h1 className="font-display font-bold">NexusRAG</h1>
-        </div>
-        <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </Button>
-      </div>
-
-      {/* Mobile Menu */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="md:hidden fixed inset-0 z-20 pt-16 bg-background/95 backdrop-blur-xl"
-          >
-            <nav className="p-6 space-y-4">
+      {/* Main Content Layout Container */}
+      <div className="flex-1 flex w-full max-w-[1500px] mx-auto p-4 md:p-6 gap-6 relative z-10">
+        
+        {/* Left Navigation Block (Moodle style) */}
+        <aside className="hidden md:block w-[280px] shrink-0">
+          {/* Main Navigation Panel */}
+          <div className="bg-white border border-[#dee2e6] shadow-sm overflow-hidden mb-6 rounded-sm">
+            <div className="px-4 py-2.5 bg-[#f8f9fa] border-b border-[#dee2e6]">
+              <h3 className="font-semibold text-sm text-[#212529] uppercase tracking-wider">Navigation</h3>
+            </div>
+            <div className="p-3 bg-white/50 backdrop-blur-sm">
               <NavLinks />
-              <Button variant="destructive" className="w-full mt-8" onClick={() => logout()}>
-                <LogOut className="w-4 h-4 mr-2" />
+            </div>
+          </div>
+          
+          {/* Administration Panel */}
+          <div className="bg-white border border-[#dee2e6] shadow-sm overflow-hidden rounded-sm">
+            <div className="px-4 py-2.5 bg-[#f8f9fa] border-b border-[#dee2e6]">
+              <h3 className="font-semibold text-sm text-[#212529] uppercase tracking-wider">Administration</h3>
+            </div>
+            <div className="p-4 text-sm bg-white/50 backdrop-blur-sm">
+              <div className="text-[#0f6cb6] hover:underline cursor-pointer mb-3 flex items-center gap-2">
+                <Settings className="w-3.5 h-3.5" />
+                My profile settings
+              </div>
+              <div className="text-[#0f6cb6] hover:underline cursor-pointer flex items-center gap-2">
+                <div className="w-3.5 h-3.5 opacity-0 inline-block"/>
+                Roles / Permissions
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Mobile Menu Content */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden fixed inset-0 z-30 pt-[60px] bg-white border-t border-[#dee2e6] shadow-xl overflow-y-auto">
+            <div className="p-4 bg-[#f8f9fa] min-h-full">
+              <div className="bg-white border border-[#dee2e6] p-2 mb-4 shadow-sm rounded-sm">
+                <NavLinks />
+              </div>
+              <Button variant="outline" className="w-full text-[#212529] border-[#dee2e6] bg-white hover:bg-[#e9ecef]" onClick={() => logout()}>
+                <LogOut className="w-4 h-4 mr-2 text-red-600" />
                 Log out
               </Button>
-            </nav>
-          </motion.div>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen relative overflow-hidden pt-16 md:pt-0">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent/10 rounded-full blur-[120px] translate-y-1/3 -translate-x-1/3 pointer-events-none" />
-        
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 z-10 custom-scrollbar">
+        {/* Main Content Area */}
+        <main className="flex-1 min-w-0">
           <AnimatePresence mode="wait">
             <motion.div
               key={location}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
-              className="max-w-7xl mx-auto h-full"
+              exit={{ opacity: 0, y: -5 }}
+              transition={{ duration: 0.15 }}
+              className="h-full bg-transparent"
             >
               {children}
             </motion.div>
           </AnimatePresence>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

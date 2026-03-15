@@ -1,8 +1,10 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes } from "./auth";
+import { ensureCollection } from "./vectordb";
 
 const app = express();
 const httpServer = createServer(app);
@@ -63,6 +65,19 @@ app.use((req, res, next) => {
 (async () => {
   await setupAuth(app);
   registerAuthRoutes(app);
+
+  // ── Qdrant Cloud: ensure collection exists on startup ────
+  if (process.env.QDRANT_URL && process.env.QDRANT_API_KEY) {
+    try {
+      await ensureCollection();
+      log("Qdrant Cloud connected ✅", "vectordb");
+    } catch (err) {
+      log(`Qdrant unreachable — keyword fallback mode 🟡`, "vectordb");
+    }
+  } else {
+    log("QDRANT_URL not set — running in keyword-fallback mode 🟡", "vectordb");
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -89,18 +104,23 @@ app.use((req, res, next) => {
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
+  const basePort = parseInt(process.env.PORT || "5000", 10);
+
+  function tryListen(port: number) {
+    const onError = (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        log(`Port ${port} in use, trying ${port + 1}...`);
+        httpServer.removeListener("error", onError);
+        tryListen(port + 1);
+      } else {
+        console.error("Server error:", err);
+      }
+    };
+    httpServer.once("error", onError);
+    httpServer.listen(port, "0.0.0.0", () => {
+      httpServer.removeListener("error", onError);
       log(`serving on port ${port}`);
-    },
-  );
+    });
+  }
+  tryListen(basePort);
 })();

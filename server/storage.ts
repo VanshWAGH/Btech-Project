@@ -4,10 +4,30 @@ import {
   documents,
   queries,
   users,
+  announcements,
+  auditLogs,
+  courses,
+  courseEnrollments,
+  courseNotes,
+  calendarEvents,
+  notifications,
+  departments,
+  academicYears,
+  semesters,
   type Tenant,
   type TenantMember,
   type Document,
   type Query,
+  type Announcement,
+  type AuditLog,
+  type Course,
+  type CourseEnrollment,
+  type CourseNote,
+  type CalendarEvent,
+  type Notification,
+  type Department,
+  type AcademicYear,
+  type Semester,
   type CreateTenantRequest,
   type CreateTenantMemberRequest,
   type CreateDocumentRequest,
@@ -17,31 +37,94 @@ import {
   type QueryResponse,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, getTableColumns, asc, ilike } from "drizzle-orm";
 
 export interface IStorage {
   getTenant(id: number): Promise<TenantResponse | undefined>;
   getAllTenants(): Promise<TenantResponse[]>;
   createTenant(data: CreateTenantRequest): Promise<Tenant>;
-  
+
   getTenantMembers(tenantId: number): Promise<TenantMemberResponse[]>;
-  getTenantMemberByUser(tenantId: number, userId: string): Promise<TenantMember | undefined>;
+  getTenantMemberByUser(tenantId: number, userId: number): Promise<TenantMember | undefined>;
   addTenantMember(data: CreateTenantMemberRequest): Promise<TenantMember>;
-  
+
   getDocuments(tenantId?: number, category?: string): Promise<DocumentResponse[]>;
   getDocument(id: number): Promise<DocumentResponse | undefined>;
   createDocument(data: CreateDocumentRequest): Promise<Document>;
   deleteDocument(id: number): Promise<void>;
-  
-  getQueries(tenantId?: number, userId?: string): Promise<QueryResponse[]>;
+
+  getQueries(tenantId?: number, userId?: number): Promise<QueryResponse[]>;
   createQuery(data: {
     tenantId: number;
-    userId: string;
+    userId: number;
     query: string;
     response?: string;
     context?: string;
     relevantDocs?: string[];
   }): Promise<Query>;
+
+  updateDocumentStatus(id: number, status: string): Promise<Document>;
+
+  getAnnouncements(tenantId?: number, role?: string): Promise<Announcement[]>;
+  createAnnouncement(data: any): Promise<Announcement>;
+
+  createAuditLog(data: any): Promise<AuditLog>;
+
+  // COURSES
+  getCourses(tenantId?: number, department?: string, teacherId?: number): Promise<any[]>;
+  getCourse(id: number): Promise<any | undefined>;
+  createCourse(data: any): Promise<Course>;
+  updateCourse(id: number, data: Partial<Course>): Promise<Course>;
+  deleteCourse(id: number): Promise<void>;
+
+  // ENROLLMENTS
+  enrollStudent(courseId: number, studentId: number): Promise<CourseEnrollment>;
+  unenrollStudent(courseId: number, studentId: number): Promise<void>;
+  getEnrolledStudents(courseId: number): Promise<any[]>;
+  getStudentEnrollments(studentId: number): Promise<any[]>;
+  isEnrolled(courseId: number, studentId: number): Promise<boolean>;
+
+  // COURSE NOTES
+  getCourseNotes(courseId: number, topic?: string): Promise<any[]>;
+  getCourseNote(id: number): Promise<CourseNote | undefined>;
+  createCourseNote(data: any): Promise<CourseNote>;
+  updateCourseNote(id: number, data: Partial<CourseNote>): Promise<CourseNote>;
+  deleteCourseNote(id: number): Promise<void>;
+
+  // CALENDAR EVENTS
+  getCalendarEvents(tenantId?: number, department?: string): Promise<any[]>;
+  createCalendarEvent(data: any): Promise<CalendarEvent>;
+  updateCalendarEvent(id: number, data: Partial<CalendarEvent>): Promise<CalendarEvent>;
+  deleteCalendarEvent(id: number): Promise<void>;
+
+  // NOTIFICATIONS
+  getUserNotifications(userId: number): Promise<Notification[]>;
+  createNotification(data: any): Promise<Notification>;
+  markNotificationRead(id: number): Promise<void>;
+  markAllNotificationsRead(userId: number): Promise<void>;
+
+  // DEPARTMENTS
+  getDepartments(tenantId: number): Promise<any[]>;
+  getDepartment(id: number): Promise<Department | undefined>;
+  createDepartment(data: any): Promise<Department>;
+  updateDepartment(id: number, data: Partial<Department>): Promise<Department>;
+  deleteDepartment(id: number): Promise<void>;
+
+  // ACADEMIC YEARS
+  getAcademicYears(tenantId: number): Promise<AcademicYear[]>;
+  createAcademicYear(data: any): Promise<AcademicYear>;
+  updateAcademicYear(id: number, data: Partial<AcademicYear>): Promise<AcademicYear>;
+  setActiveAcademicYear(id: number, tenantId: number): Promise<void>;
+
+  // SEMESTERS
+  getSemesters(tenantId: number, yearId?: number): Promise<Semester[]>;
+  createSemester(data: any): Promise<Semester>;
+  updateSemester(id: number, data: Partial<Semester>): Promise<Semester>;
+  setActiveSemester(id: number, tenantId: number): Promise<void>;
+
+  // USERS (for admin)
+  getUsersByRole(tenantId: number, role?: string): Promise<any[]>;
+  updateUserStatus(userId: number, updates: any): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -49,26 +132,26 @@ export class DatabaseStorage implements IStorage {
   async getTenant(id: number): Promise<TenantResponse | undefined> {
     const [tenant] = await db
       .select({
-        ...tenants,
+        ...getTableColumns(tenants),
         membersCount: sql<number>`count(${tenantMembers.id})::int`,
       })
       .from(tenants)
       .leftJoin(tenantMembers, eq(tenants.id, tenantMembers.tenantId))
       .where(eq(tenants.id, id))
       .groupBy(tenants.id);
-    return tenant;
+    return tenant as TenantResponse | undefined;
   }
 
   async getAllTenants(): Promise<TenantResponse[]> {
     return db
       .select({
-        ...tenants,
+        ...getTableColumns(tenants),
         membersCount: sql<number>`count(${tenantMembers.id})::int`,
       })
       .from(tenants)
       .leftJoin(tenantMembers, eq(tenants.id, tenantMembers.tenantId))
       .groupBy(tenants.id)
-      .orderBy(desc(tenants.createdAt));
+      .orderBy(desc(tenants.createdAt)) as any;
   }
 
   async createTenant(data: CreateTenantRequest): Promise<Tenant> {
@@ -80,17 +163,17 @@ export class DatabaseStorage implements IStorage {
   async getTenantMembers(tenantId: number): Promise<TenantMemberResponse[]> {
     return db
       .select({
-        ...tenantMembers,
+        ...getTableColumns(tenantMembers),
         userName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
       })
       .from(tenantMembers)
       .leftJoin(users, eq(tenantMembers.userId, users.id))
-      .where(eq(tenantMembers.tenantId, tenantId));
+      .where(eq(tenantMembers.tenantId, tenantId)) as any;
   }
 
   async getTenantMemberByUser(
     tenantId: number,
-    userId: string
+    userId: number
   ): Promise<TenantMember | undefined> {
     const [member] = await db
       .select()
@@ -116,7 +199,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<DocumentResponse[]> {
     let query = db
       .select({
-        ...documents,
+        ...getTableColumns(documents),
         uploaderName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
       })
       .from(documents)
@@ -130,22 +213,22 @@ export class DatabaseStorage implements IStorage {
       query = query.where(eq(documents.category, category)) as any;
     }
 
-    return query;
+    return query as any;
   }
 
   async getDocument(id: number): Promise<DocumentResponse | undefined> {
     const [doc] = await db
       .select({
-        ...documents,
+        ...getTableColumns(documents),
         uploaderName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
       })
       .from(documents)
       .leftJoin(users, eq(documents.uploadedBy, users.id))
       .where(eq(documents.id, id));
-    return doc;
+    return doc as DocumentResponse | undefined;
   }
 
-  async createDocument(data: CreateDocumentRequest): Promise<Document> {
+  async createDocument(data: any): Promise<Document> {
     const [doc] = await db.insert(documents).values(data).returning();
     return doc;
   }
@@ -157,7 +240,7 @@ export class DatabaseStorage implements IStorage {
   // QUERIES
   async getQueries(
     tenantId?: number,
-    userId?: string
+    userId?: number
   ): Promise<QueryResponse[]> {
     let query = db
       .select()
@@ -176,7 +259,7 @@ export class DatabaseStorage implements IStorage {
 
   async createQuery(data: {
     tenantId: number;
-    userId: string;
+    userId: number;
     query: string;
     response?: string;
     context?: string;
@@ -184,6 +267,347 @@ export class DatabaseStorage implements IStorage {
   }): Promise<Query> {
     const [query] = await db.insert(queries).values(data).returning();
     return query;
+  }
+
+  // STATUS UPDATES
+  async updateDocumentStatus(id: number, status: string): Promise<Document> {
+    const [doc] = await db
+      .update(documents)
+      .set({ status })
+      .where(eq(documents.id, id))
+      .returning();
+    return doc;
+  }
+
+  // ANNOUNCEMENTS
+  async getAnnouncements(tenantId?: number, role?: string): Promise<Announcement[]> {
+    let query = db.select().from(announcements).orderBy(desc(announcements.createdAt));
+
+    if (tenantId) {
+      query = query.where(eq(announcements.tenantId, tenantId)) as any;
+    }
+
+    return query as any;
+  }
+
+  async createAnnouncement(data: any): Promise<Announcement> {
+    const [announcement] = await db.insert(announcements).values(data).returning();
+    return announcement;
+  }
+
+  // AUDIT LOGS
+  async createAuditLog(data: any): Promise<AuditLog> {
+    const [log] = await db.insert(auditLogs).values(data).returning();
+    return log;
+  }
+
+  // ============================================
+  // COURSES
+  // ============================================
+  async getCourses(tenantId?: number, department?: string, teacherId?: number): Promise<any[]> {
+    let q = db
+      .select({
+        ...getTableColumns(courses),
+        teacherName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+        enrollmentCount: sql<number>`(SELECT COUNT(*) FROM course_enrollments WHERE course_id = courses.id)::int`,
+      })
+      .from(courses)
+      .leftJoin(users, eq(courses.teacherId, users.id))
+      .orderBy(desc(courses.createdAt));
+
+    const conditions: any[] = [];
+    if (tenantId) conditions.push(eq(courses.tenantId, tenantId));
+    if (department) conditions.push(eq(courses.department, department));
+    if (teacherId) conditions.push(eq(courses.teacherId, teacherId));
+
+    if (conditions.length === 1) q = q.where(conditions[0]) as any;
+    else if (conditions.length > 1) q = q.where(and(...conditions)) as any;
+
+    return q as any;
+  }
+
+  async getCourse(id: number): Promise<any | undefined> {
+    const [course] = await db
+      .select({
+        ...getTableColumns(courses),
+        teacherName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+        enrollmentCount: sql<number>`(SELECT COUNT(*) FROM course_enrollments WHERE course_id = courses.id)::int`,
+      })
+      .from(courses)
+      .leftJoin(users, eq(courses.teacherId, users.id))
+      .where(eq(courses.id, id));
+    return course;
+  }
+
+  async createCourse(data: any): Promise<Course> {
+    const [course] = await db.insert(courses).values(data).returning();
+    return course;
+  }
+
+  async updateCourse(id: number, data: Partial<Course>): Promise<Course> {
+    const [course] = await db.update(courses).set(data).where(eq(courses.id, id)).returning();
+    return course;
+  }
+
+  async deleteCourse(id: number): Promise<void> {
+    await db.delete(courses).where(eq(courses.id, id));
+  }
+
+  // ============================================
+  // ENROLLMENTS
+  // ============================================
+  async enrollStudent(courseId: number, studentId: number): Promise<CourseEnrollment> {
+    const [enrollment] = await db.insert(courseEnrollments).values({ courseId, studentId }).returning();
+    return enrollment;
+  }
+
+  async unenrollStudent(courseId: number, studentId: number): Promise<void> {
+    await db.delete(courseEnrollments).where(
+      and(eq(courseEnrollments.courseId, courseId), eq(courseEnrollments.studentId, studentId))
+    );
+  }
+
+  async getEnrolledStudents(courseId: number): Promise<any[]> {
+    return db
+      .select({
+        ...getTableColumns(courseEnrollments),
+        studentName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+        studentEmail: users.email,
+        department: users.department,
+      })
+      .from(courseEnrollments)
+      .leftJoin(users, eq(courseEnrollments.studentId, users.id))
+      .where(eq(courseEnrollments.courseId, courseId)) as any;
+  }
+
+  async getStudentEnrollments(studentId: number): Promise<any[]> {
+    return db
+      .select({
+        ...getTableColumns(courseEnrollments),
+        ...getTableColumns(courses),
+        teacherName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+        enrollmentId: courseEnrollments.id,
+        enrolledAt: courseEnrollments.enrolledAt,
+      })
+      .from(courseEnrollments)
+      .leftJoin(courses, eq(courseEnrollments.courseId, courses.id))
+      .leftJoin(users, eq(courses.teacherId, users.id))
+      .where(eq(courseEnrollments.studentId, studentId)) as any;
+  }
+
+  async isEnrolled(courseId: number, studentId: number): Promise<boolean> {
+    const [row] = await db
+      .select()
+      .from(courseEnrollments)
+      .where(and(eq(courseEnrollments.courseId, courseId), eq(courseEnrollments.studentId, studentId)));
+    return !!row;
+  }
+
+  // ============================================
+  // COURSE NOTES
+  // ============================================
+  async getCourseNotes(courseId: number, topic?: string): Promise<any[]> {
+    const conditions = [eq(courseNotes.courseId, courseId)];
+    if (topic) conditions.push(eq(courseNotes.topic, topic));
+
+    return db
+      .select({
+        ...getTableColumns(courseNotes),
+        uploaderName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+      })
+      .from(courseNotes)
+      .leftJoin(users, eq(courseNotes.uploadedBy, users.id))
+      .where(and(...conditions))
+      .orderBy(desc(courseNotes.uploadedAt)) as any;
+  }
+
+  async getCourseNote(id: number): Promise<CourseNote | undefined> {
+    const [note] = await db.select().from(courseNotes).where(eq(courseNotes.id, id));
+    return note;
+  }
+
+  async createCourseNote(data: any): Promise<CourseNote> {
+    const [note] = await db.insert(courseNotes).values(data).returning();
+    return note;
+  }
+
+  async updateCourseNote(id: number, data: Partial<CourseNote>): Promise<CourseNote> {
+    const [note] = await db.update(courseNotes).set(data).where(eq(courseNotes.id, id)).returning();
+    return note;
+  }
+
+  async deleteCourseNote(id: number): Promise<void> {
+    await db.delete(courseNotes).where(eq(courseNotes.id, id));
+  }
+
+  // ============================================
+  // CALENDAR EVENTS
+  // ============================================
+  async getCalendarEvents(tenantId?: number, department?: string): Promise<any[]> {
+    let q = db
+      .select({
+        ...getTableColumns(calendarEvents),
+        creatorName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+      })
+      .from(calendarEvents)
+      .leftJoin(users, eq(calendarEvents.createdBy, users.id))
+      .orderBy(asc(calendarEvents.eventDate));
+
+    const conditions: any[] = [];
+    if (tenantId) conditions.push(eq(calendarEvents.tenantId, tenantId));
+    if (department) conditions.push(eq(calendarEvents.department, department));
+
+    if (conditions.length === 1) q = q.where(conditions[0]) as any;
+    else if (conditions.length > 1) q = q.where(and(...conditions)) as any;
+
+    return q as any;
+  }
+
+  async createCalendarEvent(data: any): Promise<CalendarEvent> {
+    const [event] = await db.insert(calendarEvents).values(data).returning();
+    return event;
+  }
+
+  async updateCalendarEvent(id: number, data: Partial<CalendarEvent>): Promise<CalendarEvent> {
+    const [event] = await db.update(calendarEvents).set(data).where(eq(calendarEvents.id, id)).returning();
+    return event;
+  }
+
+  async deleteCalendarEvent(id: number): Promise<void> {
+    await db.delete(calendarEvents).where(eq(calendarEvents.id, id));
+  }
+
+  // ============================================
+  // NOTIFICATIONS
+  // ============================================
+  async getUserNotifications(userId: number): Promise<Notification[]> {
+    return db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50) as any;
+  }
+
+  async createNotification(data: any): Promise<Notification> {
+    const [notif] = await db.insert(notifications).values(data).returning();
+    return notif;
+  }
+
+  async markNotificationRead(id: number): Promise<void> {
+    await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id));
+  }
+
+  async markAllNotificationsRead(userId: number): Promise<void> {
+    await db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, userId));
+  }
+
+  // ============================================
+  // DEPARTMENTS
+  // ============================================
+  async getDepartments(tenantId: number): Promise<any[]> {
+    return db.select({
+      ...getTableColumns(departments),
+      headName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+      headEmail: users.email,
+    })
+    .from(departments)
+    .leftJoin(users, eq(departments.headId, users.id))
+    .where(eq(departments.tenantId, tenantId))
+    .orderBy(asc(departments.name)) as any;
+  }
+
+  async getDepartment(id: number): Promise<Department | undefined> {
+    const [dept] = await db.select().from(departments).where(eq(departments.id, id));
+    return dept;
+  }
+
+  async createDepartment(data: any): Promise<Department> {
+    const [dept] = await db.insert(departments).values(data).returning();
+    return dept;
+  }
+
+  async updateDepartment(id: number, data: Partial<Department>): Promise<Department> {
+    const [dept] = await db.update(departments).set(data).where(eq(departments.id, id)).returning();
+    return dept;
+  }
+
+  async deleteDepartment(id: number): Promise<void> {
+    await db.delete(departments).where(eq(departments.id, id));
+  }
+
+  // ============================================
+  // ACADEMIC YEARS
+  // ============================================
+  async getAcademicYears(tenantId: number): Promise<AcademicYear[]> {
+    return db.select().from(academicYears)
+      .where(eq(academicYears.tenantId, tenantId))
+      .orderBy(desc(academicYears.startDate)) as any;
+  }
+
+  async createAcademicYear(data: any): Promise<AcademicYear> {
+    const [year] = await db.insert(academicYears).values(data).returning();
+    return year;
+  }
+
+  async updateAcademicYear(id: number, data: Partial<AcademicYear>): Promise<AcademicYear> {
+    const [year] = await db.update(academicYears).set(data).where(eq(academicYears.id, id)).returning();
+    return year;
+  }
+
+  async setActiveAcademicYear(id: number, tenantId: number): Promise<void> {
+    await db.update(academicYears).set({ isActive: false }).where(eq(academicYears.tenantId, tenantId));
+    await db.update(academicYears).set({ isActive: true }).where(eq(academicYears.id, id));
+  }
+
+  // ============================================
+  // SEMESTERS
+  // ============================================
+  async getSemesters(tenantId: number, yearId?: number): Promise<Semester[]> {
+    const conditions: any[] = [eq(semesters.tenantId, tenantId)];
+    if (yearId) conditions.push(eq(semesters.academicYearId, yearId));
+    return db.select().from(semesters).where(and(...conditions)).orderBy(asc(semesters.startDate)) as any;
+  }
+
+
+  async createSemester(data: any): Promise<Semester> {
+    const [sem] = await db.insert(semesters).values(data).returning();
+    return sem;
+  }
+
+  async updateSemester(id: number, data: Partial<Semester>): Promise<Semester> {
+    const [sem] = await db.update(semesters).set(data).where(eq(semesters.id, id)).returning();
+    return sem;
+  }
+
+  async setActiveSemester(id: number, tenantId: number): Promise<void> {
+    await db.update(semesters).set({ isActive: false }).where(eq(semesters.tenantId, tenantId));
+    await db.update(semesters).set({ isActive: true }).where(eq(semesters.id, id));
+  }
+
+  // ============================================
+  // USERS (admin management)
+  // ============================================
+  async getUsersByRole(tenantId: number, role?: string): Promise<any[]> {
+    // Get all users who are members of this tenant, optionally filtered by role
+    let q = db.select({
+      ...getTableColumns(users),
+      tenantRole: tenantMembers.role,
+      tenantDepartment: tenantMembers.department,
+      memberId: tenantMembers.id,
+    })
+    .from(users)
+    .leftJoin(tenantMembers, and(eq(tenantMembers.userId, users.id), eq(tenantMembers.tenantId, tenantId)))
+    .orderBy(asc(users.firstName));
+
+    if (role) {
+      q = q.where(eq(users.role, role)) as any;
+    }
+
+    return q as any;
+  }
+
+  async updateUserStatus(userId: number, updates: any): Promise<any> {
+    const [user] = await db.update(users).set(updates).where(eq(users.id, userId)).returning();
+    return user;
   }
 }
 
