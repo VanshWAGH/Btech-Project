@@ -131,8 +131,9 @@ export async function ensureCollection(): Promise<void> {
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   const response = await openai.embeddings.create({
-    model: "text-embedding-3-small",
+    model: process.env.AI_EMBEDDING_MODEL || "text-embedding-3-small",
     input: text.slice(0, 8000),     // max token guard
+    dimensions: VECTOR_SIZE,        // force matching length for Qdrant compatibility if supported by the provider
   });
   return response.data[0].embedding;
 }

@@ -36,6 +36,10 @@ const TeacherCourses = lazy(() => import("@/pages/teacher/teacher-courses"));
 const TeacherCourseDetail = lazy(() => import("@/pages/teacher/teacher-course-detail"));
 const TeacherCourseNotes = lazy(() => import("@/pages/teacher/teacher-course-notes"));
 const TeacherCalendar = lazy(() => import("@/pages/teacher/teacher-calendar"));
+// Lazy-loaded University Admin pages
+const UniversitySettings = lazy(() => import("@/pages/university/university-settings"));
+const FacultyMgmt = lazy(() => import("@/pages/university/faculty-mgmt"));
+const UniversityCalendar = lazy(() => import("@/pages/university/university-calendar"));
 
 // Page loading spinner
 function PageLoader() {
@@ -87,7 +91,7 @@ function Router() {
       </Route>
 
       {/* ============================================ */}
-      {/* ADMIN / DEPARTMENT ROUTES                    */}
+      {/* ADMIN / UNIVERSITY ADMIN ROUTES              */}
       {/* ============================================ */}
       <Route path="/dashboard">
         {() => <ProtectedRoute component={Dashboard} />}
@@ -114,7 +118,13 @@ function Router() {
         {() => <ProtectedRoute component={Documents} />}
       </Route>
       <Route path="/faculty-mgmt">
-        {() => <ProtectedRoute component={Tenants} />}
+        {() => <ProtectedRoute component={FacultyMgmt} />}
+      </Route>
+      <Route path="/university-mgmt">
+        {() => <ProtectedRoute component={UniversitySettings} />}
+      </Route>
+      <Route path="/calendar-mgmt">
+        {() => <ProtectedRoute component={UniversityCalendar} />}
       </Route>
       <Route path="/admin-users">
         {() => <ProtectedRoute component={Tenants} />}

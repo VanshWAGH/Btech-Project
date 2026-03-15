@@ -429,7 +429,7 @@ Context:
 ${context || "No relevant documents found."}`;
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: process.env.AI_CHAT_MODEL || "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: input.query },
@@ -527,7 +527,7 @@ ${context}
 Security Rule: Only answer based on the provided context. Do not reveal information from other departments.`;
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: process.env.AI_CHAT_MODEL || "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: query },
@@ -650,6 +650,20 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
    */
   app.get("/api/student/notifications", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.id;
+      
+      // Fetch user's direct notifications from the new table
+      const userNotifs = await storage.getUserNotifications(userId);
+      const mappedNotifs = userNotifs.map(n => ({
+        id: `notif_${n.id}`,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        read: n.isRead,
+        createdAt: n.createdAt,
+      }));
+
+      // Fetch general announcements
       const announcements = await storage.getAnnouncements();
       const recentAnnouncements = announcements.slice(0, 5).map(a => ({
         id: `ann_${a.id}`,
@@ -660,9 +674,13 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
         createdAt: a.createdAt,
       }));
 
+      const allNotifications = [...mappedNotifs, ...recentAnnouncements].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
       res.json({
-        notifications: recentAnnouncements,
-        unreadCount: recentAnnouncements.length,
+        notifications: allNotifications,
+        unreadCount: allNotifications.filter(n => !n.read).length,
       });
     } catch (err) {
       console.error("Error fetching notifications:", err);
@@ -707,7 +725,14 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
   // Get all courses (optionally filtered)
   app.get("/api/courses", isAuthenticated, async (req, res) => {
     try {
-      const department = req.query.department as string | undefined;
+      const user = req.user as any;
+      let department = req.query.department as string | undefined;
+      
+      // Enforce department filtering for students to prevent cross-department course access
+      if (user?.role?.toUpperCase() === "STUDENT" && user?.department) {
+        department = user.department;
+      }
+
       const teacherIdRaw = req.query.teacherId as string | undefined;
       const teacherId = teacherIdRaw ? parseInt(teacherIdRaw) : undefined;
       const tenants = await storage.getAllTenants();
@@ -737,7 +762,7 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
     try {
       const userId = (req.user as any)?.id;
       const userRole = (req.user as any)?.role?.toUpperCase();
-      if (!["TEACHER", "ADMIN", "DEPARTMENT"].includes(userRole)) {
+      if (!["TEACHER", "ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) {
         return res.status(403).json({ message: "Only teachers can create courses" });
       }
       const tenantList = await storage.getAllTenants();
@@ -747,12 +772,13 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
         teacherId: userId,
         tenantId,
       });
-      // Notify enrolled students (or all students of the department) about new course
-      const allMembers = await storage.getTenantMembers(tenantId);
-      const students = allMembers.filter((m: any) => m.role?.toUpperCase() === "STUDENT");
-      await Promise.all(students.map((s: any) =>
+      // Notify students of the department about new course
+      const allStudents = await storage.getUsersByRole(tenantId, "STUDENT");
+      const studentsInDept = allStudents.filter(s => s.department === course.department);
+      
+      await Promise.all(studentsInDept.map((s: any) =>
         storage.createNotification({
-          userId: s.userId,
+          userId: s.id,
           tenantId,
           type: "new_course",
           title: "New Course Launched!",
@@ -947,7 +973,7 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
     try {
       const userId = (req.user as any)?.id;
       const userRole = (req.user as any)?.role?.toUpperCase();
-      if (!["TEACHER", "ADMIN", "DEPARTMENT"].includes(userRole)) {
+      if (!["TEACHER", "ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) {
         return res.status(403).json({ message: "Not authorized" });
       }
       const tenantList = await storage.getAllTenants();
@@ -1091,11 +1117,204 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
     }
   });
 
+  // ============================================
+  // DEPARTMENT ROUTES
+  // ============================================
+  app.get("/api/departments", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      if (!tenantId) return res.status(400).json({ message: "No tenant found" });
+      const depts = await storage.getDepartments(tenantId);
+      res.json(depts);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch departments" });
+    }
+  });
+
+  app.post("/api/departments", isAuthenticated, async (req, res) => {
+    try {
+      const userRole = (req.user as any)?.role?.toUpperCase();
+      if (!["ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) return res.status(403).json({ message: "Not authorized" });
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      const dept = await storage.createDepartment({ ...req.body, tenantId });
+      res.status(201).json(dept);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create department" });
+    }
+  });
+
+  app.put("/api/departments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const dept = await storage.updateDepartment(parseInt(req.params.id), req.body);
+      res.json(dept);
+    } catch (err) { res.status(500).json({ message: "Failed to update department" }); }
+  });
+
+  app.delete("/api/departments/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteDepartment(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (err) { res.status(500).json({ message: "Failed to delete department" }); }
+  });
+
+  // ============================================
+  // ACADEMIC YEAR ROUTES
+  // ============================================
+  app.get("/api/academic-years", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      if (!tenantId) return res.status(400).json({ message: "No tenant found" });
+      res.json(await storage.getAcademicYears(tenantId));
+    } catch (err) { res.status(500).json({ message: "Failed to fetch academic years" }); }
+  });
+
+  app.post("/api/academic-years", isAuthenticated, async (req, res) => {
+    try {
+      const userRole = (req.user as any)?.role?.toUpperCase();
+      if (!["ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) return res.status(403).json({ message: "Not authorized" });
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      const year = await storage.createAcademicYear({ ...req.body, tenantId, startDate: new Date(req.body.startDate), endDate: new Date(req.body.endDate) });
+      res.status(201).json(year);
+    } catch (err) { res.status(500).json({ message: "Failed to create academic year" }); }
+  });
+
+  app.patch("/api/academic-years/:id/activate", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      await storage.setActiveAcademicYear(parseInt(req.params.id), tenantList[0]?.id || 1);
+      res.json({ success: true });
+    } catch (err) { res.status(500).json({ message: "Failed to activate year" }); }
+  });
+
+  // ============================================
+  // SEMESTER ROUTES
+  // ============================================
+  app.get("/api/semesters", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      const yearId = req.query.yearId ? parseInt(req.query.yearId as string) : undefined;
+      if (!tenantId) return res.status(400).json({ message: "No tenant found" });
+      res.json(await storage.getSemesters(tenantId, yearId));
+    } catch (err) { res.status(500).json({ message: "Failed to fetch semesters" }); }
+  });
+
+  app.post("/api/semesters", isAuthenticated, async (req, res) => {
+    try {
+      const userRole = (req.user as any)?.role?.toUpperCase();
+      if (!["ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) return res.status(403).json({ message: "Not authorized" });
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      const sem = await storage.createSemester({ ...req.body, tenantId, startDate: new Date(req.body.startDate), endDate: new Date(req.body.endDate) });
+      res.status(201).json(sem);
+    } catch (err) { res.status(500).json({ message: "Failed to create semester" }); }
+  });
+
+  app.patch("/api/semesters/:id/activate", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      await storage.setActiveSemester(parseInt(req.params.id), tenantList[0]?.id || 1);
+      res.json({ success: true });
+    } catch (err) { res.status(500).json({ message: "Failed to activate semester" }); }
+  });
+
+  // ============================================
+  // ADMIN - USER MANAGEMENT ROUTES
+  // ============================================
+
+  app.get("/api/admin/teachers", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      res.json(await storage.getUsersByRole(tenantId, "TEACHER"));
+    } catch (err) { res.status(500).json({ message: "Failed to fetch teachers" }); }
+  });
+
+  app.get("/api/admin/students", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      res.json(await storage.getUsersByRole(tenantId, "STUDENT"));
+    } catch (err) { res.status(500).json({ message: "Failed to fetch students" }); }
+  });
+
+  app.patch("/api/admin/users/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userRole = (req.user as any)?.role?.toUpperCase();
+      if (!["ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) return res.status(403).json({ message: "Not authorized" });
+      const userId = parseInt(req.params.id);
+      const { clearanceLevel, department, role } = req.body;
+      const updates: any = {};
+      if (clearanceLevel) updates.clearanceLevel = clearanceLevel;
+      if (department !== undefined) updates.department = department;
+      if (role) updates.role = role;
+      const updated = await storage.updateUserStatus(userId, updates);
+      res.json(updated);
+    } catch (err) {
+      console.error("Error updating user:", err);
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      const [teachers, students, allCourses, recentAnnouncements, calEvents, depts, activeYears] = await Promise.all([
+        storage.getUsersByRole(tenantId, "TEACHER"),
+        storage.getUsersByRole(tenantId, "STUDENT"),
+        storage.getCourses(tenantId),
+        storage.getAnnouncements(tenantId),
+        storage.getCalendarEvents(tenantId),
+        storage.getDepartments(tenantId),
+        storage.getAcademicYears(tenantId),
+      ]);
+      res.json({
+        totalTeachers: teachers.length,
+        totalStudents: students.length,
+        totalCourses: allCourses.length,
+        totalDepts: depts.length,
+        activeYear: (activeYears as any[]).find((y: any) => y.isActive)?.name || "N/A",
+        recentAnnouncements: recentAnnouncements.slice(0, 3),
+        upcomingEvents: (calEvents as any[]).filter((e: any) => new Date(e.eventDate) >= new Date()).slice(0, 5),
+      });
+    } catch (err) {
+      console.error("Admin stats error:", err);
+      res.status(500).json({ message: "Failed to fetch admin stats" });
+    }
+  });
+
+  app.post("/api/calendar/suggest", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id || 1;
+      const event = await storage.createCalendarEvent({ ...req.body, tenantId, createdBy: userId, status: "pending", eventDate: new Date(req.body.eventDate) });
+      res.status(201).json(event);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to submit suggestion" });
+    }
+  });
+
+  app.patch("/api/calendar/:id/approve", isAuthenticated, async (req, res) => {
+    try {
+      const userRole = (req.user as any)?.role?.toUpperCase();
+      if (!["ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) return res.status(403).json({ message: "Not authorized" });
+      const event = await storage.updateCalendarEvent(parseInt(req.params.id), { status: "approved" } as any);
+      res.json(event);
+    } catch (err) { res.status(500).json({ message: "Failed to approve event" }); }
+  });
+
   // Seed database with initial data
   await seedDatabase();
 
   return httpServer;
 }
+
 
 
 // ============================================

@@ -54,7 +54,7 @@ export default function Announcements() {
         createAnnouncement.mutate(formData);
     };
 
-    const isAdminOrDept = user?.role === 'ADMIN' || user?.role === 'DEPARTMENT';
+    const isAdminOrDept = user?.role === 'ADMIN' || user?.role === 'UNIVERSITY_ADMIN';
 
     return (
         <AppLayout>

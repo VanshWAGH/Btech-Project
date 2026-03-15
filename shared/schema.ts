@@ -97,8 +97,47 @@ export const auditLogs = pgTable("audit_logs", {
 ]);
 
 // ============================================
-// COURSES
+// UNIVERSITY MANAGEMENT (Academics & Departments)
 // ============================================
+
+export const departments = pgTable("departments", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  headId: integer("head_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("departments_tenant_idx").on(table.tenantId),
+]);
+
+export const academicYears = pgTable("academic_years", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  isActive: boolean("is_active").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("academic_years_tenant_idx").on(table.tenantId),
+]);
+
+export const semesters = pgTable("semesters", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  academicYearId: integer("academic_year_id").notNull().references(() => academicYears.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  isActive: boolean("is_active").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("semesters_tenant_idx").on(table.tenantId),
+  index("semesters_year_idx").on(table.academicYearId),
+]);
+
+// ============================================
+// COURSES
 
 export const courses = pgTable("courses", {
   id: serial("id").primaryKey(),
@@ -149,6 +188,7 @@ export const calendarEvents = pgTable("calendar_events", {
   department: text("department").notNull(),
   eventDate: timestamp("event_date").notNull(),
   eventType: text("event_type").notNull(), // lecture | exam | assignment_deadline | holiday | seminar
+  status: text("status").notNull().default("approved"), // approved | pending
   createdBy: integer("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
@@ -261,6 +301,21 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, { fields: [notifications.userId], references: [users.id] }),
 }));
 
+export const departmentsRelations = relations(departments, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [departments.tenantId], references: [tenants.id] }),
+  head: one(users, { fields: [departments.headId], references: [users.id] }),
+}));
+
+export const academicYearsRelations = relations(academicYears, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [academicYears.tenantId], references: [tenants.id] }),
+  semesters: many(semesters),
+}));
+
+export const semestersRelations = relations(semesters, ({ one }) => ({
+  tenant: one(tenants, { fields: [semesters.tenantId], references: [tenants.id] }),
+  academicYear: one(academicYears, { fields: [semesters.academicYearId], references: [academicYears.id] }),
+}));
+
 // ============================================
 // BASE SCHEMAS
 // ============================================
@@ -283,10 +338,19 @@ export const insertCourseNoteSchema = createInsertSchema(courseNotes).omit({ id:
 });
 export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true, createdAt: true }).extend({
   tenantId: z.coerce.number().optional(),
-  createdBy: z.string().optional(),
+  createdBy: z.coerce.number().optional(),
   eventDate: z.string().or(z.date()).transform(v => new Date(v)),
 });
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true });
+export const insertAcademicYearSchema = createInsertSchema(academicYears).omit({ id: true, createdAt: true }).extend({
+  startDate: z.string().or(z.date()).transform(v => new Date(v)),
+  endDate: z.string().or(z.date()).transform(v => new Date(v)),
+});
+export const insertSemesterSchema = createInsertSchema(semesters).omit({ id: true, createdAt: true }).extend({
+  startDate: z.string().or(z.date()).transform(v => new Date(v)),
+  endDate: z.string().or(z.date()).transform(v => new Date(v)),
+});
 
 // ============================================
 // EXPLICIT API CONTRACT TYPES
@@ -304,6 +368,9 @@ export type CourseEnrollment = typeof courseEnrollments.$inferSelect;
 export type CourseNote = typeof courseNotes.$inferSelect;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type Department = typeof departments.$inferSelect;
+export type AcademicYear = typeof academicYears.$inferSelect;
+export type Semester = typeof semesters.$inferSelect;
 
 // Request types
 export type CreateTenantRequest = z.infer<typeof insertTenantSchema>;

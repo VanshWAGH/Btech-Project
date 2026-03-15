@@ -96,7 +96,7 @@ export default function StudentDashboard() {
                   {user?.department || "Computer Engineering"}
                 </Badge>
                 <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
-                  Semester {user?.semester || "6"}
+                  Semester {(user as any)?.semester || "6"}
                 </Badge>
                 <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
                   <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full mr-1.5 animate-pulse" />

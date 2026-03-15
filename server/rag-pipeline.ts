@@ -37,7 +37,7 @@ function classifyQuery(query: string) {
     /\b(why|how|explain|compare|difference|describe|analyze)\b/i.test(query);
   return {
     complexity: isComplex ? "complex" : "simple",
-    model:      isComplex ? "gpt-4o"  : "gpt-4o-mini",
+    model:      isComplex ? (process.env.AI_CHAT_MODEL || "gpt-4o")  : (process.env.AI_CHAT_MODEL_MINI || "gpt-4o-mini"),
   };
 }
 

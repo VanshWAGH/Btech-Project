@@ -263,7 +263,7 @@ export default function Documents() {
                       {format(new Date(doc.createdAt), 'MMM d, yyyy')}
                     </td>
                     <td className="px-6 py-4 text-right flex justify-end gap-2">
-                      {doc.status !== 'APPROVED' && (user?.role === 'ADMIN' || user?.role === 'DEPARTMENT') && (
+                      {doc.status !== 'APPROVED' && (user?.role === 'ADMIN' || user?.role === 'UNIVERSITY_ADMIN') && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -273,7 +273,7 @@ export default function Documents() {
                           Approve
                         </Button>
                       )}
-                      {(user?.role === 'ADMIN' || user?.role === 'DEPARTMENT' || String(doc.uploadedBy) === String(user?.id)) && (
+                      {(user?.role === 'ADMIN' || user?.role === 'UNIVERSITY_ADMIN' || String(doc.uploadedBy) === String(user?.id)) && (
                         <Button
                           variant="ghost"
                           size="icon"

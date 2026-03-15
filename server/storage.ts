@@ -11,6 +11,9 @@ import {
   courseNotes,
   calendarEvents,
   notifications,
+  departments,
+  academicYears,
+  semesters,
   type Tenant,
   type TenantMember,
   type Document,
@@ -22,6 +25,9 @@ import {
   type CourseNote,
   type CalendarEvent,
   type Notification,
+  type Department,
+  type AcademicYear,
+  type Semester,
   type CreateTenantRequest,
   type CreateTenantMemberRequest,
   type CreateDocumentRequest,
@@ -31,7 +37,7 @@ import {
   type QueryResponse,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, desc, getTableColumns, asc } from "drizzle-orm";
+import { eq, and, sql, desc, getTableColumns, asc, ilike } from "drizzle-orm";
 
 export interface IStorage {
   getTenant(id: number): Promise<TenantResponse | undefined>;
@@ -96,6 +102,29 @@ export interface IStorage {
   createNotification(data: any): Promise<Notification>;
   markNotificationRead(id: number): Promise<void>;
   markAllNotificationsRead(userId: number): Promise<void>;
+
+  // DEPARTMENTS
+  getDepartments(tenantId: number): Promise<any[]>;
+  getDepartment(id: number): Promise<Department | undefined>;
+  createDepartment(data: any): Promise<Department>;
+  updateDepartment(id: number, data: Partial<Department>): Promise<Department>;
+  deleteDepartment(id: number): Promise<void>;
+
+  // ACADEMIC YEARS
+  getAcademicYears(tenantId: number): Promise<AcademicYear[]>;
+  createAcademicYear(data: any): Promise<AcademicYear>;
+  updateAcademicYear(id: number, data: Partial<AcademicYear>): Promise<AcademicYear>;
+  setActiveAcademicYear(id: number, tenantId: number): Promise<void>;
+
+  // SEMESTERS
+  getSemesters(tenantId: number, yearId?: number): Promise<Semester[]>;
+  createSemester(data: any): Promise<Semester>;
+  updateSemester(id: number, data: Partial<Semester>): Promise<Semester>;
+  setActiveSemester(id: number, tenantId: number): Promise<void>;
+
+  // USERS (for admin)
+  getUsersByRole(tenantId: number, role?: string): Promise<any[]>;
+  updateUserStatus(userId: number, updates: any): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -378,19 +407,18 @@ export class DatabaseStorage implements IStorage {
   // COURSE NOTES
   // ============================================
   async getCourseNotes(courseId: number, topic?: string): Promise<any[]> {
-    let q = db
+    const conditions = [eq(courseNotes.courseId, courseId)];
+    if (topic) conditions.push(eq(courseNotes.topic, topic));
+
+    return db
       .select({
         ...getTableColumns(courseNotes),
         uploaderName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
       })
       .from(courseNotes)
       .leftJoin(users, eq(courseNotes.uploadedBy, users.id))
-      .where(eq(courseNotes.courseId, courseId))
-      .orderBy(desc(courseNotes.uploadedAt));
-
-    if (topic) q = q.where(eq(courseNotes.topic, topic)) as any;
-
-    return q as any;
+      .where(and(...conditions))
+      .orderBy(desc(courseNotes.uploadedAt)) as any;
   }
 
   async getCourseNote(id: number): Promise<CourseNote | undefined> {
@@ -470,6 +498,116 @@ export class DatabaseStorage implements IStorage {
 
   async markAllNotificationsRead(userId: number): Promise<void> {
     await db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, userId));
+  }
+
+  // ============================================
+  // DEPARTMENTS
+  // ============================================
+  async getDepartments(tenantId: number): Promise<any[]> {
+    return db.select({
+      ...getTableColumns(departments),
+      headName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+      headEmail: users.email,
+    })
+    .from(departments)
+    .leftJoin(users, eq(departments.headId, users.id))
+    .where(eq(departments.tenantId, tenantId))
+    .orderBy(asc(departments.name)) as any;
+  }
+
+  async getDepartment(id: number): Promise<Department | undefined> {
+    const [dept] = await db.select().from(departments).where(eq(departments.id, id));
+    return dept;
+  }
+
+  async createDepartment(data: any): Promise<Department> {
+    const [dept] = await db.insert(departments).values(data).returning();
+    return dept;
+  }
+
+  async updateDepartment(id: number, data: Partial<Department>): Promise<Department> {
+    const [dept] = await db.update(departments).set(data).where(eq(departments.id, id)).returning();
+    return dept;
+  }
+
+  async deleteDepartment(id: number): Promise<void> {
+    await db.delete(departments).where(eq(departments.id, id));
+  }
+
+  // ============================================
+  // ACADEMIC YEARS
+  // ============================================
+  async getAcademicYears(tenantId: number): Promise<AcademicYear[]> {
+    return db.select().from(academicYears)
+      .where(eq(academicYears.tenantId, tenantId))
+      .orderBy(desc(academicYears.startDate)) as any;
+  }
+
+  async createAcademicYear(data: any): Promise<AcademicYear> {
+    const [year] = await db.insert(academicYears).values(data).returning();
+    return year;
+  }
+
+  async updateAcademicYear(id: number, data: Partial<AcademicYear>): Promise<AcademicYear> {
+    const [year] = await db.update(academicYears).set(data).where(eq(academicYears.id, id)).returning();
+    return year;
+  }
+
+  async setActiveAcademicYear(id: number, tenantId: number): Promise<void> {
+    await db.update(academicYears).set({ isActive: false }).where(eq(academicYears.tenantId, tenantId));
+    await db.update(academicYears).set({ isActive: true }).where(eq(academicYears.id, id));
+  }
+
+  // ============================================
+  // SEMESTERS
+  // ============================================
+  async getSemesters(tenantId: number, yearId?: number): Promise<Semester[]> {
+    const conditions: any[] = [eq(semesters.tenantId, tenantId)];
+    if (yearId) conditions.push(eq(semesters.academicYearId, yearId));
+    return db.select().from(semesters).where(and(...conditions)).orderBy(asc(semesters.startDate)) as any;
+  }
+
+
+  async createSemester(data: any): Promise<Semester> {
+    const [sem] = await db.insert(semesters).values(data).returning();
+    return sem;
+  }
+
+  async updateSemester(id: number, data: Partial<Semester>): Promise<Semester> {
+    const [sem] = await db.update(semesters).set(data).where(eq(semesters.id, id)).returning();
+    return sem;
+  }
+
+  async setActiveSemester(id: number, tenantId: number): Promise<void> {
+    await db.update(semesters).set({ isActive: false }).where(eq(semesters.tenantId, tenantId));
+    await db.update(semesters).set({ isActive: true }).where(eq(semesters.id, id));
+  }
+
+  // ============================================
+  // USERS (admin management)
+  // ============================================
+  async getUsersByRole(tenantId: number, role?: string): Promise<any[]> {
+    // Get all users who are members of this tenant, optionally filtered by role
+    let q = db.select({
+      ...getTableColumns(users),
+      tenantRole: tenantMembers.role,
+      tenantDepartment: tenantMembers.department,
+      memberId: tenantMembers.id,
+    })
+    .from(users)
+    .leftJoin(tenantMembers, and(eq(tenantMembers.userId, users.id), eq(tenantMembers.tenantId, tenantId)))
+    .orderBy(asc(users.firstName));
+
+    if (role) {
+      q = q.where(eq(users.role, role)) as any;
+    }
+
+    return q as any;
+  }
+
+  async updateUserStatus(userId: number, updates: any): Promise<any> {
+    const [user] = await db.update(users).set(updates).where(eq(users.id, userId)).returning();
+    return user;
   }
 }
 
