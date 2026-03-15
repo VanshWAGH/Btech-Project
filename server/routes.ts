@@ -350,29 +350,59 @@ export async function registerRoutes(
   // ANNOUNCEMENTS ROUTES
   // ============================================
 
-  app.get("/api/announcements", isAuthenticated, async (req, res) => {
-    try {
-      const tenantId = req.query.tenantId ? parseInt(req.query.tenantId as string) : undefined;
-      const items = await storage.getAnnouncements(tenantId);
-      res.json(items);
-    } catch (error) {
-      console.error("Error fetching announcements:", error);
-      res.status(500).json({ message: "Failed to fetch announcements" });
-    }
-  });
-
+  
   app.post("/api/announcements", isAuthenticated, async (req, res) => {
-    try {
-      const { title, content, targetRole, department, tenantId } = req.body;
-      const announcement = await storage.createAnnouncement({
-        title, content, targetRole, department, tenantId, createdBy: (req.user as any).id
+  try {
+
+    const { title, content, targetRole, department, tenantId, eventDate, eventType } = req.body;
+
+    // Create announcement
+    const announcement = await storage.createAnnouncement({
+      title,
+      content,
+      targetRole,
+      department,
+      tenantId,
+      createdBy: (req.user as any).id
+    });
+
+    // If announcement represents an academic event
+    if (eventType === "exam" || eventType === "holiday") {
+
+      const event = await storage.createCalendarEvent({
+        title,
+        description: content,
+        department,
+        tenantId,
+        createdBy: (req.user as any).id,
+        eventType,
+        eventDate: new Date(eventDate)
       });
-      res.status(201).json(announcement);
-    } catch (error) {
-      console.error("Error creating announcement:", error);
-      res.status(500).json({ message: "Failed to create announcement" });
+
+      // Notify all tenant members
+      const members = await storage.getTenantMembers(tenantId);
+
+      await Promise.all(
+        members.map((m: any) =>
+          storage.createNotification({
+            userId: m.userId,
+            tenantId,
+            type: "new_event",
+            title: "New Academic Event",
+            message: `${title} scheduled on ${new Date(eventDate).toLocaleDateString()}`,
+            relatedId: event.id,
+          }).catch(() => {})
+        )
+      );
     }
-  });
+
+    res.status(201).json(announcement);
+
+  } catch (error) {
+    console.error("Error creating announcement:", error);
+    res.status(500).json({ message: "Failed to create announcement" });
+  }
+});
 
   // ============================================
   // QUERY ROUTES (RAG Processing)

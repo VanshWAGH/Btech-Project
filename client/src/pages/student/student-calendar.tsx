@@ -34,14 +34,18 @@ export default function StudentCalendar() {
   const [typeFilter, setTypeFilter] = useState("all");
 
   const { data: events = [], isLoading } = useQuery<any[]>({
-    queryKey: ["/api/calendar", user?.department],
-    queryFn: async () => {
-      const params = user?.department ? `?department=${encodeURIComponent(user.department)}` : "";
-      const res = await fetch(`/api/calendar${params}`, { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
-  });
+  queryKey: ["/api/calendar", user?.department],
+  queryFn: async () => {
+    const params = user?.department
+      ? `?department=${encodeURIComponent(user.department)}`
+      : "";
+    const res = await fetch(`/api/calendar${params}`, {
+      credentials: "include",
+    });
+    if (!res.ok) return [];
+    return res.json();
+  },
+});
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
