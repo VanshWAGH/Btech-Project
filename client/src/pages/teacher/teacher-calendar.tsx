@@ -26,10 +26,9 @@ import {
 } from "date-fns";
 
 const DEPARTMENTS = [
-  "Computer Engineering", "Information Technology", "Electronics", "Mechanical",
+  "Computer Science", "Information Technology", "Electronics", "Mechanical",
   "Civil", "Chemical", "Electrical", "MBA", "MCA", "BSc"
 ];
-
 const EVENT_TYPES = [
   { value: "lecture", label: "Lecture", color: "bg-blue-500", badge: "bg-blue-500/20 text-blue-300 border-blue-500/30", icon: BookOpen },
   { value: "exam", label: "Exam", color: "bg-red-500", badge: "bg-red-500/20 text-red-300 border-red-500/30", icon: AlertTriangle },
