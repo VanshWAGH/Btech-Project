@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,40 +6,40 @@
 
 @layer base {
   :root {
-    --font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --font-display: var(--font-sans);
+    --font-sans: 'Plus Jakarta Sans', sans-serif;
+    --font-display: 'Outfit', sans-serif;
 
-    /* Moodle Light Theme */
-    --background: 210 20% 98%; /* #f8f9fa */
-    --foreground: 210 11% 15%; /* #212529 */
+    /* Base Dark Theme - Deep Blue/Purple Tint */
+    --background: 230 25% 4%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%; /* #ffffff */
-    --card-foreground: 210 11% 15%;
+    --card: 230 25% 6%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 210 11% 15%;
+    --popover: 230 25% 6%;
+    --popover-foreground: 210 40% 98%;
 
-    /* Moodle Blue */
-    --primary: 206 85% 38%; /* #0f6cb6 */
-    --primary-foreground: 0 0% 100%;
+    /* Vibrant Purple/Indigo for primary elements */
+    --primary: 262 83% 58%;
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 14% 83%; /* #ced4da */
-    --secondary-foreground: 210 11% 15%;
+    --secondary: 230 20% 12%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 210 20% 96%; /* #f1f3f5 */
-    --muted-foreground: 210 10% 40%; /* #6c757d */
+    --muted: 230 20% 12%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 206 85% 38%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 280 80% 60%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 354 70% 54%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 210 14% 89%; /* #e3e6f0 or similar */
-    --input: 210 14% 89%;
-    --ring: 206 85% 38%;
+    --border: 230 20% 16%;
+    --input: 230 20% 16%;
+    --ring: 262 83% 58%;
 
-    --radius: 0.25rem; /* Less rounded, more classic */
+    --radius: 0.75rem;
   }
 }
 
@@ -50,45 +50,52 @@
   body {
     @apply bg-background text-foreground antialiased min-h-screen overflow-x-hidden;
     font-family: var(--font-sans);
+    background-image: 
+      radial-gradient(circle at 15% 50%, rgba(120, 80, 255, 0.08), transparent 25%),
+      radial-gradient(circle at 85% 30%, rgba(80, 160, 255, 0.08), transparent 25%);
+    background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-normal text-foreground;
-  }
-  
-  a {
-    @apply text-primary hover:underline;
+    font-family: var(--font-display);
+    @apply tracking-tight font-semibold;
   }
 }
 
 @layer utilities {
   .glass {
-    @apply bg-card border border-border rounded-md shadow-sm;
+    @apply bg-background/40 backdrop-blur-xl border border-white/5 shadow-2xl;
   }
   
   .glass-panel {
-    @apply bg-card border border-border rounded-md;
+    @apply bg-white/5 backdrop-blur-md border border-white/10;
   }
 
   .glass-input {
-    @apply bg-white border border-border focus:border-primary focus:ring-1 focus:ring-primary transition-colors;
+    @apply bg-black/20 backdrop-blur-sm border border-white/10 focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all duration-300;
   }
 
   .text-gradient {
-    @apply text-foreground; /* Remove gradients for Moodle vibe */
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400;
   }
 
   .hover-elevate {
-    @apply transition-colors hover:bg-muted;
+    @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 hover:border-primary/30;
   }
 
-  /* Keep legacy anims so nothing crashes, but make them invisible */
   .animate-blob {
-    display: none;
+    animation: blob 7s infinite;
   }
   .animate-blob-delayed {
-    display: none;
+    animation: blob 7s infinite 2s;
   }
+}
+
+@keyframes blob {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
 }
 
 /* Custom Scrollbar */
@@ -100,9 +107,9 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--border) / 0.8);
+  background: hsl(var(--border));
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+  background: hsl(var(--muted-foreground));
 }

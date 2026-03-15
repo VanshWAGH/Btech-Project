@@ -1,12 +1,14 @@
 import { AppLayout } from "@/components/layout/app-layout";
-import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useCreateQuery, useQueries } from "@/hooks/use-queries";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { ProcessedQueryResponse } from "@shared/schema";
-import { Search, Loader2, Bot, Megaphone, FileText, CornerDownLeft, ClipboardList } from "lucide-react";
+import { Search, Sparkles, FileText, Bot, ArrowRight, CornerDownLeft, Loader2 } from "lucide-react";
+import { format } from "date-fns";
 
 export default function Dashboard() {
-  const { user } = useAuth();
   const [queryInput, setQueryInput] = useState("");
   const [activeResult, setActiveResult] = useState<ProcessedQueryResponse | null>(null);
   
@@ -40,170 +42,158 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="w-full max-w-full pb-10">
+      <div className="h-full flex flex-col lg:flex-row gap-6">
         
-        {/* Header section matching Moodle Dashboard */}
-        <div className="flex justify-between items-start mb-3">
-          <div>
-            <h1 className="text-[2rem] font-light text-[#212529] mb-0 tracking-tight">Dashboard</h1>
-            <div className="text-sm font-medium text-primary hover:underline cursor-pointer inline-block mt-1">Dashboard</div>
-          </div>
-          <button className="bg-[#e9ecef] text-[#495057] px-4 py-1.5 text-sm rounded border border-[#dee2e6] hover:bg-[#dde0e3] transition-colors mt-2">
-            Customise this page
-          </button>
-        </div>
+        {/* Main Interface */}
+        <div className="flex-1 flex flex-col h-[calc(100vh-8rem)]">
+          <header className="mb-6">
+            <h1 className="text-3xl font-display font-bold">Query Engine</h1>
+            <p className="text-muted-foreground mt-1">Ask questions across your organization's knowledge base.</p>
+          </header>
 
-        <h2 className="text-2xl font-light text-[#212529] mb-6">
-          Welcome back, {user?.id && user?.firstName ? `${user.id}_${user.firstName.toUpperCase()}` : "User"}! 👋
-        </h2>
-
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
-          
-          {/* Main Content Column */}
-          <div className="flex-1 w-full space-y-6">
-            
-            {/* Feedback Alert Block */}
-            <div className="bg-[#cce5ff] text-[#004085] p-3 rounded border border-[#b8daff] flex gap-3 items-start text-sm pr-10 relative">
-              <Megaphone className="w-5 h-5 shrink-0 mt-0.5 opacity-80" />
-              <div>
-                <div className="mb-1">The creators of this software would like your feedback.</div>
-                <div>
-                  <span className="font-bold text-[#004085] cursor-pointer hover:underline">Give feedback about this software ↗</span> 
-                  <span className="mx-2 font-bold opacity-30">|</span> 
-                  <span className="font-bold text-[#004085] cursor-pointer hover:underline">Remind me later</span>
+          {/* Results Area */}
+          <div className="flex-1 glass rounded-2xl p-6 mb-6 overflow-y-auto custom-scrollbar relative flex flex-col">
+            {!activeResult && !createQuery.isPending && (
+              <div className="m-auto text-center max-w-md opacity-60">
+                <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-6 border border-white/10">
+                  <Sparkles className="w-8 h-8 text-primary" />
                 </div>
+                <h3 className="text-xl font-display font-semibold mb-2">How can I help?</h3>
+                <p className="text-sm">Search documents, ask questions, or synthesize information from your secure tenant vault.</p>
               </div>
-            </div>
+            )}
 
-            {/* Error/Notice Block modeled after Moodle's unsupported warning */}
-            <div className="bg-white p-4 rounded border border-[#dee2e6] text-[15px]">
-              <p className="text-[#212529] mb-2 leading-relaxed">This site is fully supported and functioning ideally.</p>
-              <p className="text-red-600 font-bold leading-relaxed">
-                Notice: Your multi-tenant RAG system is active and operating securely across your isolated vault. The integrity of your documents and query results is assured.
-              </p>
-            </div>
+            <AnimatePresence mode="wait">
+              {createQuery.isPending && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="flex flex-col items-center justify-center m-auto space-y-6"
+                >
+                  <div className="relative">
+                    <div className="w-16 h-16 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                    <Bot className="w-6 h-6 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-medium text-primary animate-pulse">Retrieving context...</p>
+                    <p className="text-xs text-muted-foreground mt-2">Scanning semantic vectors</p>
+                  </div>
+                </motion.div>
+              )}
 
-            {/* NexusRAG Query Block - "Course overview" equivalent */}
-            <div className="bg-white border border-[#dee2e6] rounded">
-              <div className="px-4 py-3 border-b border-[#dee2e6] bg-transparent">
-                <h3 className="font-normal text-lg text-[#212529]">NexusRAG Engine</h3>
-              </div>
-              
-              <div className="p-4">
-                {/* Result Area */}
-                <div className="min-h-[200px] max-h-[400px] overflow-y-auto mb-4 bg-muted/20 p-4 border border-[#dee2e6] rounded">
-                  {!activeResult && !createQuery.isPending && (
-                    <div className="text-center text-muted-foreground my-8">
-                      <Bot className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                      <p>Type a query below to search your documents securely.</p>
+              {activeResult && !createQuery.isPending && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
+                >
+                  {/* AI Response */}
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+                      <Bot className="w-5 h-5 text-primary" />
                     </div>
-                  )}
-
-                  {createQuery.isPending && (
-                    <div className="flex flex-col items-center justify-center py-8">
-                      <Loader2 className="w-8 h-8 text-primary animate-spin mb-3" />
-                      <p className="text-sm text-muted-foreground animate-pulse">Running semantic search...</p>
-                    </div>
-                  )}
-
-                  {activeResult && !createQuery.isPending && (
-                    <div className="space-y-6">
-                      <div className="bg-white border border-[#dee2e6] p-4 rounded text-sm text-[#212529] shadow-sm">
+                    <div className="flex-1">
+                      <div className="glass-panel p-6 rounded-2xl rounded-tl-sm text-sm leading-relaxed prose prose-invert max-w-none">
                         {activeResult.response.split('\n').map((para, i) => (
-                          <p key={i} className="mb-3 last:mb-0 leading-relaxed">{para}</p>
+                          <p key={i} className="mb-4 last:mb-0 text-gray-200">{para}</p>
                         ))}
                       </div>
+                    </div>
+                  </div>
 
-                      {activeResult.sources && activeResult.sources.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-bold text-[#212529] mb-2">Sources Found:</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {activeResult.sources.map((source, idx) => (
-                              <div key={idx} className="border border-[#dee2e6] bg-[#f8f9fa] p-2 flex items-center gap-2 text-sm text-primary hover:underline cursor-pointer">
-                                <FileText className="w-4 h-4 text-muted-foreground" />
-                                <span className="truncate">{source.title}</span>
-                              </div>
-                            ))}
+                  {/* Context Sources */}
+                  {activeResult.sources && activeResult.sources.length > 0 && (
+                    <div className="pl-14">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <FileText className="w-4 h-4" /> 
+                        Sources Consulted
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {activeResult.sources.map((source, idx) => (
+                          <div key={idx} className="glass-panel p-3 rounded-xl hover-elevate cursor-pointer group">
+                            <p className="font-medium text-sm truncate group-hover:text-primary transition-colors">{source.title}</p>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className="text-xs text-muted-foreground bg-white/5 px-2 py-0.5 rounded-md">
+                                {source.category || 'General'}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        ))}
+                      </div>
                     </div>
                   )}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {/* Input Area */}
-                <form onSubmit={handleSubmit} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={queryInput}
-                    onChange={(e) => setQueryInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    disabled={createQuery.isPending}
-                    placeholder="Search documents or ask a question..."
-                    className="flex-1 border border-[#dee2e6] rounded px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                  />
-                  <button 
-                    type="submit" 
-                    disabled={!queryInput.trim() || createQuery.isPending}
-                    className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    Query
-                  </button>
-                </form>
-              </div>
-            </div>
-
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div ref={messagesEndRef} />
           </div>
 
-          {/* Right Sidebar Columns */}
-          <div className="w-full lg:w-[320px] shrink-0 space-y-6">
-            
-            {/* Timeline Block */}
-            <div className="bg-white border border-[#dee2e6] rounded-sm">
-              <div className="px-4 py-2 bg-transparent border-b border-[#dee2e6]">
-                <h3 className="font-normal text-[15px] text-[#212529]">Timeline</h3>
-              </div>
-              <div className="p-4 text-sm">
-                <select className="w-[140px] border border-[#dee2e6] rounded p-1.5 text-sm mb-2 focus:outline-none focus:border-primary bg-white text-[#495057] block">
-                  <option>Next 7 days</option>
-                  <option>Next 30 days</option>
-                  <option>Next 3 months</option>
-                  <option>Next 6 months</option>
-                </select>
-                <select className="w-[140px] border border-[#dee2e6] rounded p-1.5 text-sm mb-4 focus:outline-none focus:border-primary bg-white text-[#495057] block">
-                  <option>Sort by dates</option>
-                  <option>Sort by courses</option>
-                </select>
-                
-                <input 
-                  type="text" 
-                  placeholder="Search by" 
-                  className="w-[140px] border border-[#dee2e6] rounded p-1 text-sm focus:outline-none focus:border-primary placeholder:text-muted-foreground"
-                />
-
-                <div className="text-center text-sm text-muted-foreground mt-8 mb-6 flex flex-col items-center">
-                  <div className="w-16 h-16 bg-[#f8f9fa] rounded-sm flex items-center justify-center mb-3">
-                    <ClipboardList className="w-8 h-8 text-[#ced4da]" />
-                  </div>
-                  No activities require action
-                </div>
+          {/* Input Area */}
+          <form onSubmit={handleSubmit} className="relative mt-auto shrink-0">
+            <div className="relative flex items-end shadow-2xl shadow-black/50 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all">
+              <Textarea
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about your documents..."
+                className="min-h-[60px] max-h-[200px] w-full resize-none bg-transparent border-0 focus-visible:ring-0 px-4 py-4 text-base"
+                rows={1}
+                disabled={createQuery.isPending}
+              />
+              <div className="p-3 shrink-0">
+                <Button 
+                  type="submit" 
+                  size="icon" 
+                  disabled={!queryInput.trim() || createQuery.isPending}
+                  className="rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 transition-all active:scale-95"
+                >
+                  {createQuery.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <CornerDownLeft className="w-5 h-5" />}
+                </Button>
               </div>
             </div>
-
-            {/* Latest Badges Block */}
-            <div className="bg-white border border-[#dee2e6] rounded-sm">
-              <div className="px-4 py-2 bg-transparent border-b border-[#dee2e6]">
-                <h3 className="font-normal text-[15px] text-[#212529]">Latest badges</h3>
-              </div>
-              <div className="p-4 text-sm text-[#212529]">
-                You have no badges to display
-              </div>
-            </div>
-
-          </div>
+            <p className="text-[10px] text-center text-muted-foreground mt-3">
+              Responses are generated based strictly on available tenant context.
+            </p>
+          </form>
         </div>
 
+        {/* Sidebar History */}
+        <div className="w-full lg:w-80 h-[calc(100vh-8rem)] flex flex-col shrink-0">
+          <div className="glass rounded-2xl flex-1 flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-white/5 flex items-center gap-2">
+              <Search className="w-4 h-4 text-muted-foreground" />
+              <h3 className="font-semibold text-sm">Recent Queries</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-1">
+              {history.length === 0 ? (
+                <div className="text-center p-6 opacity-50">
+                  <p className="text-xs">No history yet</p>
+                </div>
+              ) : (
+                history.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      // Note: In a real app we'd fetch the full detail, 
+                      // here we simulate loading it to activeResult
+                      setQueryInput(item.query);
+                    }}
+                    className="w-full text-left p-3 rounded-xl hover:bg-white/5 transition-colors group"
+                  >
+                    <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">
+                      {item.query}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {format(new Date(item.createdAt), 'MMM d, h:mm a')}
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        
       </div>
     </AppLayout>
   );

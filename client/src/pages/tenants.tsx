@@ -13,16 +13,16 @@ export default function Tenants() {
   const { data: tenants = [], isLoading } = useTenants();
   const createTenant = useCreateTenant();
   const { toast } = useToast();
-
+  
   const [isOpen, setIsOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: "", domain: "", type: "demo" });
+  const [formData, setFormData] = useState({ name: "", domain: "" });
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     createTenant.mutate(formData, {
       onSuccess: () => {
         setIsOpen(false);
-        setFormData({ name: "", domain: "", type: "demo" });
+        setFormData({ name: "", domain: "" });
         toast({ title: "Tenant created successfully" });
       },
       onError: (err) => {
@@ -38,7 +38,7 @@ export default function Tenants() {
           <h1 className="text-3xl font-display font-bold">Tenant Management</h1>
           <p className="text-muted-foreground mt-1">Manage organizations and workspace instances.</p>
         </div>
-
+        
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
             <Button className="h-11 px-6 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
@@ -56,37 +56,22 @@ export default function Tenants() {
             <form onSubmit={handleCreate} className="space-y-5 mt-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Organization Name</label>
-                <Input
+                <Input 
                   required
                   value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  onChange={e => setFormData({...formData, name: e.target.value})}
                   className="glass-input h-11"
                   placeholder="Acme Corp"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Domain (Optional)</label>
-                <Input
+                <Input 
                   value={formData.domain}
-                  onChange={e => setFormData({ ...formData, domain: e.target.value })}
+                  onChange={e => setFormData({...formData, domain: e.target.value})}
                   className="glass-input h-11"
                   placeholder="acme.com"
                 />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Category</label>
-                <select
-                  className="w-full bg-white/5 border border-white/10 rounded-md p-2 text-sm text-white"
-                  value={formData.type}
-                  onChange={e => setFormData({ ...formData, type: e.target.value })}
-                >
-                  <option value="student" className="bg-black text-white">Student</option>
-                  <option value="faculty" className="bg-black text-white">Faculty / Teachers</option>
-                  <option value="department" className="bg-black text-white">Departments</option>
-                  <option value="administration" className="bg-black text-white">Administration</option>
-                  <option value="research" className="bg-black text-white">Research Groups</option>
-                  <option value="demo" className="bg-black text-white">Demo</option>
-                </select>
               </div>
               <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
@@ -128,15 +113,12 @@ export default function Tenants() {
                   {tenant.membersCount || 0} Members
                 </div>
               </div>
-
+              
               <h3 className="text-xl font-display font-bold text-foreground mb-1">{tenant.name}</h3>
-              <div className="flex flex-col gap-1">
-                {tenant.domain && (
-                  <p className="text-sm text-primary">{tenant.domain}</p>
-                )}
-                <p className="text-xs text-muted-foreground uppercase tracking-widest">{tenant.type}</p>
-              </div>
-
+              {tenant.domain && (
+                <p className="text-sm text-primary mb-4">{tenant.domain}</p>
+              )}
+              
               <div className="pt-4 border-t border-white/5 flex items-center justify-between text-xs text-muted-foreground">
                 <span>ID: {tenant.id}</span>
                 <span>Created {format(new Date(tenant.createdAt), 'MMM yyyy')}</span>
