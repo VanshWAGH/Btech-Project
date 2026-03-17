@@ -349,12 +349,46 @@ export async function registerRoutes(
   // ============================================
   // ANNOUNCEMENTS ROUTES
   // ============================================
+  app.get("/api/announcements", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const tenantId = 1; // same as POST/announcements (temporary) update to dynamicId later on
 
+      const data = await storage.getAnnouncementsByTenant(tenantId);
+
+      // ✅ Apply filtering (IMPORTANT)
+      const filtered = data.filter((a: any) => {
+
+        // Role filter
+        if (a.targetRole && a.targetRole !== "ALL" && a.targetRole !== user.role) {
+          return false;
+        }
+
+        // Department filter
+        if (a.department && a.department !== user.department) {
+          return false;
+        }
+
+        return true;
+      });
+
+      res.json(filtered);
+
+    } catch (err) {
+      console.error("Error fetching announcements:", err);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
   
   app.post("/api/announcements", isAuthenticated, async (req, res) => {
   try {
 
-    const { title, content, targetRole, department, tenantId, eventDate, eventType } = req.body;
+    const { title, content, targetRole, department, eventDate, eventType } = req.body;
+    const tenantId = 1;//(req.user as any)?.tenantId; temporary hardcoded
+    if (!tenantId) {
+      console.error("❌ Tenant ID missing for user:", req.user);
+      return res.status(400).json({ message: "Tenant ID missing" });
+    }
 
     // Create announcement
     const announcement = await storage.createAnnouncement({
@@ -365,6 +399,53 @@ export async function registerRoutes(
       tenantId,
       createdBy: (req.user as any).id
     });
+
+    //Temporary Debug
+    // console.log("USER OBJECT created announcement:", req.user);
+    
+    const members = await storage.getTenantMembers(tenantId);
+    // //Temp Debug
+    // console.log("ALL MEMBERS:", members);
+    
+    // ✅ Filter based on role + department
+    const filteredMembers = members.filter((m: any) => {
+      // ❌ Exclude sendor
+      if (m.userId === (req.user as any).id) {
+        return false;
+      }
+
+      // Role filter
+      if (targetRole !== "ALL" && m.role !== targetRole) {
+        return false;
+      }
+
+      // ⚠️ Department filter (ONLY if available)
+      if (department && m.department !== department) {
+        return false;
+      }
+
+      return true;
+    });
+    //Temp Debug
+    // console.log("FILTERED MEMBERS:", filteredMembers);
+
+    await Promise.all(
+      filteredMembers.map((m: any) => {
+        //Temp Debug
+        console.log("Creating notification for user:", m.userId);
+
+        return storage.createNotification({
+          userId: m.userId,
+          tenantId,
+          type: "announcement",
+          title: "New Announcement",
+          message: title,
+          relatedId: announcement.id,
+        }).catch((err) => {
+          console.error("❌ Notification insert error:", err);
+        });
+      })
+    );
 
     // If announcement represents an academic event
     if (eventType === "exam" || eventType === "holiday") {
@@ -1071,10 +1152,19 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
   app.get("/api/notifications", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
+
+      console.log("👉 Fetching notifications for user:", userId);
+
       const notifs = await storage.getUserNotifications(userId);
+
+      console.log("👉 Notifications fetched:", notifs);
+
       const unreadCount = notifs.filter((n: any) => !n.isRead).length;
+
       res.json({ notifications: notifs, unreadCount });
+
     } catch (err) {
+      console.error("❌ FULL ERROR:", err);   // THIS is key
       res.status(500).json({ message: "Failed to fetch notifications" });
     }
   });
@@ -1098,6 +1188,17 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to mark all notifications" });
+    }
+  });
+
+  //Delete Notification Button
+  app.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteNotification(id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete notification" });
     }
   });
 

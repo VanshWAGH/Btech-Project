@@ -1,6 +1,7 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BrainCircuit,
@@ -43,7 +44,10 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const { toast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [prevCount, setPrevCount] = useState(0);
+  
 
   // Fetch notification count and list
   const { data: notifData } = useQuery<any>({
@@ -57,6 +61,17 @@ export function AppLayout({ children }: AppLayoutProps) {
   });
   const unreadCount = notifData?.unreadCount || 0;
   const notifications = notifData?.notifications || [];
+
+  //Detect New Notifications
+  useEffect(() => {
+    if (notifData?.unreadCount > prevCount) {
+      toast({
+        title: "🔔 New Notification",
+        description: "You have a new update",
+      });
+    }
+    setPrevCount(notifData?.unreadCount || 0);
+  }, [notifData?.unreadCount]);
 
   // Determine valid links for the current user's role
   const userRole = user?.role?.toUpperCase() || "STUDENT";
@@ -186,12 +201,47 @@ export function AppLayout({ children }: AppLayoutProps) {
             <DropdownMenuContent align="end" className="w-[300px] bg-white border-[#dee2e6] shadow-lg p-0">
               <div className="px-4 py-3 border-b border-[#dee2e6] bg-[#f8f9fa] flex justify-between items-center">
                 <span className="font-semibold text-[15px] text-[#212529]">Notifications</span>
-                {unreadCount > 0 && <span className="text-xs text-primary cursor-pointer hover:underline">Mark all as read</span>}
+                {unreadCount > 0 && (
+                  <span
+                    className="text-xs text-primary cursor-pointer hover:underline"
+                    onClick={async () => {
+                      await fetch("/api/notifications/read-all", {
+                        method: "PATCH",
+                        credentials: "include",
+                      });
+                      window.location.reload();
+                    }}
+                  >
+                    Mark all as read
+                  </span>
+                )}              
               </div>
               <div className="max-h-[300px] overflow-y-auto">
                 {notifications.length > 0 ? (
                   notifications.map((n: any, i: number) => (
-                    <div key={i} className="px-4 py-3 border-b border-[#e9ecef] hover:bg-[#f8f9fa] cursor-pointer text-sm">
+                    <div
+                      key={i}
+                      className="px-4 py-3 border-b border-[#e9ecef] hover:bg-[#f8f9fa] cursor-pointer text-sm"
+                      onClick={async () => {
+                        // mark as read
+                        if (!n.isRead) {
+                          await fetch(`/api/notifications/${n.id}/read`, {
+                            method: "PATCH",
+                            credentials: "include",
+                          });
+                        }
+
+                        // navigate based on type
+                        if (n.type === "announcement") {
+                          window.location.href = "/announcements";
+                        } else if (n.type === "new_event") {
+                          window.location.href = "/calendar";
+                        }
+
+                        // refresh UI
+                        window.location.reload();
+                      }}
+                    >
                       <div className="font-medium text-[#212529]">{n.title || "New Notification"}</div>
                       <div className="text-muted-foreground text-xs mt-1 truncate">{n.message || "You have a new update."}</div>
                     </div>

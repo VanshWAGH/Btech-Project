@@ -280,6 +280,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ANNOUNCEMENTS
+
+  //This may not be needed.....
   async getAnnouncements(tenantId?: number, role?: string): Promise<Announcement[]> {
     let query = db.select().from(announcements).orderBy(desc(announcements.createdAt));
 
@@ -288,6 +290,14 @@ export class DatabaseStorage implements IStorage {
     }
 
     return query as any;
+  }
+
+  async getAnnouncementsByTenant(tenantId: number) {
+    return db
+      .select()
+      .from(announcements)
+      .where(eq(announcements.tenantId, tenantId))
+      .orderBy(desc(announcements.createdAt));
   }
 
   async createAnnouncement(data: any): Promise<Announcement> {
@@ -498,6 +508,10 @@ export class DatabaseStorage implements IStorage {
 
   async markAllNotificationsRead(userId: number): Promise<void> {
     await db.update(notifications).set({ isRead: true }).where(eq(notifications.userId, userId));
+  }
+
+  async deleteNotification(id: number) {
+    return db.delete(notifications).where(eq(notifications.id, id));
   }
 
   // ============================================

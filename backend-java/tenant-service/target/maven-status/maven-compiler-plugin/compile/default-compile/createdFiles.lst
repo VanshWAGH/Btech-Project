@@ -1,0 +1,9 @@
+com\applicationmaker\tenantservice\tenant\TenantDtos$CreateTenantRequest.class
+com\applicationmaker\tenantservice\tenant\TenantController.class
+com\applicationmaker\tenantservice\tenant\TenantNotFoundException.class
+com\applicationmaker\tenantservice\tenant\TenantRepository.class
+com\applicationmaker\tenantservice\TenantServiceApplication.class
+com\applicationmaker\tenantservice\tenant\TenantService.class
+com\applicationmaker\tenantservice\tenant\TenantDtos$TenantResponse.class
+com\applicationmaker\tenantservice\tenant\TenantEntity.class
+com\applicationmaker\tenantservice\tenant\TenantDtos.class

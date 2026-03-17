@@ -1,5 +1,6 @@
 import { AppLayout } from "@/components/layout/app-layout";
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -46,6 +47,19 @@ export default function Notifications() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/notifications"] });
       toast({ title: "All notifications marked as read" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/notifications/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+      toast({ title: "Notification removed" });
     },
   });
 
@@ -103,7 +117,7 @@ export default function Notifications() {
                   className={`glass rounded-2xl p-4 border transition-all cursor-pointer hover:border-white/15 ${!notif.isRead ? "border-primary/20 bg-primary/5" : "border-white/5"}`}
                   onClick={() => !notif.isRead && markReadMutation.mutate(notif.id)}
                 >
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-4 justify-between">
                     <div className={`w-10 h-10 rounded-xl ${iconConfig.bg} flex items-center justify-center shrink-0`}>
                       <IconComponent className={`w-5 h-5 ${iconConfig.color}`} />
                     </div>
@@ -121,6 +135,17 @@ export default function Notifications() {
                         {format(new Date(notif.createdAt), "MMM d, yyyy · h:mm a")}
                       </p>
                     </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 opacity-60 hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteMutation.mutate(notif.id);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 text-red-400" />
+                    </Button>
                   </div>
                 </motion.div>
               );
