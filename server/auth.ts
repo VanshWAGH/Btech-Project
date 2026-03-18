@@ -5,6 +5,7 @@ import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { users } from "@shared/schema";
+import { tenantMembers } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import connectPg from "connect-pg-simple";
@@ -134,8 +135,33 @@ export function registerAuthRoutes(app: Express) {
       if (!user) {
         return res.status(401).json({ message: info?.message || "Invalid email or password" });
       }
-      req.login(user, (loginErr) => {
+
+      
+      req.login(user, async(loginErr) => {
         if (loginErr) return next(loginErr);
+        
+        try {
+          // 🔥 AUTO ADD TO TENANT MEMBERS 
+          const existing = await db
+          .select()
+          .from(tenantMembers)
+          .where(eq(tenantMembers.userId, user.id))
+          .limit(1);
+          
+          if (existing.length === 0) {
+            console.log("⚡ Adding user to tenant_members:", user.id);
+            
+            await db.insert(tenantMembers).values({
+              tenantId: 1, // temporary
+              userId: user.id,
+              role: user.role,
+              department: user.department,
+            });
+          }
+        } catch (e) {
+          console.error("❌ Tenant member auto-add failed:", e);
+        }
+
         const { password: _pw, ...safeUser } = user;
         res.status(200).json({ message: "Login successful", user: safeUser });
       });
