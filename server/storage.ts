@@ -37,8 +37,18 @@ import {
   type QueryResponse,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql, desc, getTableColumns, asc, ilike } from "drizzle-orm";
-
+import {
+  eq,
+  and,
+  or,
+  sql,
+  desc,
+  getTableColumns,
+  asc,
+  ilike,
+  inArray,
+  isNull,
+} from "drizzle-orm";
 export interface IStorage {
   getTenant(id: number): Promise<TenantResponse | undefined>;
   getAllTenants(): Promise<TenantResponse[]>;
@@ -454,11 +464,26 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(calendarEvents.eventDate));
 
     const conditions: any[] = [];
-    if (tenantId) conditions.push(eq(calendarEvents.tenantId, tenantId));
-    if (department) conditions.push(eq(calendarEvents.department, department));
+    if (tenantId) {
+      conditions.push(eq(calendarEvents.tenantId, tenantId));
+    }
 
-    if (conditions.length === 1) q = q.where(conditions[0]) as any;
-    else if (conditions.length > 1) q = q.where(and(...conditions)) as any;
+    if (department) {
+      // When filtering by department, also include global events ("All"/"General"/NULL)
+      conditions.push(
+        or(
+          eq(calendarEvents.department, department),
+          inArray(calendarEvents.department, ["All", "General"]),
+          isNull(calendarEvents.department),
+        )
+      );
+    }
+
+    if (conditions.length === 1) {
+      q = q.where(conditions[0]) as any;
+    } else if (conditions.length > 1) {
+      q = q.where(and(...conditions)) as any;
+    }
 
     return q as any;
   }

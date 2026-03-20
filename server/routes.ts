@@ -402,12 +402,18 @@ export async function registerRoutes(
         )
       );
 
-      // If it's also an academic event, create calendar entry + extra notification
-      if (eventType === "exam" || eventType === "holiday") {
+            // If it's also an academic event, create calendar entry + extra notification
+      // Any eventType is allowed as long as an eventDate is provided
+      if (eventType && eventDate) {
+        const resolvedDepartment =
+          (typeof department === "string" && department.trim()) ||
+          ((req.user as any)?.department as string | undefined) ||
+          "All";
+
         const event = await storage.createCalendarEvent({
           title,
           description: content,
-          department: department || "General",
+          department: resolvedDepartment,
           tenantId,
           createdBy: userId,
           eventType,
@@ -1030,19 +1036,27 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
   });
 
   // Create calendar event (Teacher/Admin only)
-  app.post("/api/calendar", isAuthenticated, async (req, res) => {
+    app.post("/api/calendar", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
       const userRole = (req.user as any)?.role?.toUpperCase();
       if (!["TEACHER", "ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) {
         return res.status(403).json({ message: "Not authorized" });
       }
+
       const tenantList = await storage.getAllTenants();
       const tenantId = tenantList[0]?.id || 1;
+
+      const resolvedDepartment =
+        (typeof req.body?.department === "string" && req.body.department.trim()) ||
+        ((req.user as any)?.department as string | undefined) ||
+        "All";
+
       const event = await storage.createCalendarEvent({
         ...req.body,
         tenantId,
         createdBy: userId,
+        department: resolvedDepartment,
         eventDate: new Date(req.body.eventDate),
       });
 

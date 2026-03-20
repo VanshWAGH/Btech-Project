@@ -1,16 +1,43 @@
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
-import { Megaphone, Plus, Clock, Users, Building, Loader2 } from "lucide-react";
+import { Megaphone, Plus, Clock, Users, Building, Loader2, Calendar as CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
+
+// fallback list – used when /api/departments returns nothing
+const STATIC_DEPARTMENTS = [
+  "Computer Engineering",
+  "Information Technology",
+  "Electronics",
+  "Mechanical",
+  "Civil",
+  "Chemical",
+  "Electrical",
+  "MBA",
+  "MCA",
+  "BSc",
+];
+
+const EVENT_TYPES = [
+  { value: "", label: "No calendar entry" },
+  { value: "lecture", label: "Lecture / Class" },
+  { value: "exam", label: "Exam" },
+  { value: "assignment_deadline", label: "Assignment Deadline" },
+  { value: "holiday", label: "Holiday" },
+  { value: "seminar", label: "Seminar / Workshop" },
+];
 
 export default function Announcements() {
   const { user } = useAuth();
@@ -23,9 +50,15 @@ export default function Announcements() {
     content: "",
     targetRole: "ALL",
     department: "",
+    eventType: "",       // NEW
+    eventDate: "",       // NEW (ISO date-time string)
   });
 
-  const { data: announcements = [], isLoading, error } = useQuery<any[]>({
+  const {
+    data: announcements = [],
+    isLoading,
+    error,
+  } = useQuery<any[]>({
     queryKey: ["/api/announcements"],
     queryFn: async () => {
       const res = await fetch("/api/announcements", { credentials: "include" });
@@ -36,6 +69,26 @@ export default function Announcements() {
       return res.json();
     },
   });
+
+  // Load departments (for dropdown)
+  const { data: departments = [] } = useQuery<any[]>({
+    queryKey: ["/api/departments"],
+    queryFn: async () => {
+      const res = await fetch("/api/departments", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const deptOptionsSource =
+    departments.length > 0
+      ? departments.map((d: any) => d.name)
+      : STATIC_DEPARTMENTS;
+
+  const allDeptOptions = [
+    { value: "", label: "All Departments" },
+    ...deptOptionsSource.map((name) => ({ value: name, label: name })),
+  ];
 
   const createAnnouncement = useMutation({
     mutationFn: async (data: any) => {
@@ -53,27 +106,58 @@ export default function Announcements() {
     },
     onSuccess: () => {
       setIsDialogOpen(false);
-      setFormData({ title: "", content: "", targetRole: "ALL", department: "" });
+      setFormData({
+        title: "",
+        content: "",
+        targetRole: "ALL",
+        department: "",
+        eventType: "",
+        eventDate: "",
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/announcements"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-      toast({ title: "✅ Broadcast sent!", description: "All members have been notified." });
+      toast({
+        title: "✅ Broadcast sent!",
+        description: "All members have been notified.",
+      });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to broadcast", description: err.message, variant: "destructive" });
+      toast({
+        title: "Failed to broadcast",
+        description: err.message,
+        variant: "destructive",
+      });
     },
   });
 
   const handleBroadcast = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim() || !formData.content.trim()) {
-      toast({ title: "Title and content are required", variant: "destructive" });
+      toast({
+        title: "Title and content are required",
+        variant: "destructive",
+      });
       return;
     }
-    createAnnouncement.mutate(formData);
+
+    // If no eventType selected, strip event fields so this is just a normal announcement
+    const payload =
+      !formData.eventType || !formData.eventDate
+        ? {
+            title: formData.title,
+            content: formData.content,
+            targetRole: formData.targetRole,
+            department: formData.department,
+          }
+        : formData;
+
+    createAnnouncement.mutate(payload);
   };
 
   const isAdminOrDept =
-    user?.role === "ADMIN" || user?.role === "UNIVERSITY_ADMIN" || user?.role === "TEACHER";
+    user?.role === "ADMIN" ||
+    user?.role === "UNIVERSITY_ADMIN" ||
+    user?.role === "TEACHER";
 
   const formatDate = (d: any) => {
     try {
@@ -104,7 +188,7 @@ export default function Announcements() {
                   New Broadcast
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[560px] bg-white border-[#dee2e6] p-0 overflow-hidden">
+              <DialogContent className="sm:max-w-[620px] bg-white border-[#dee2e6] p-0 overflow-hidden">
                 <DialogHeader className="px-6 py-4 bg-[#f8f9fa] border-b border-[#dee2e6]">
                   <DialogTitle className="text-base font-semibold text-[#212529] flex items-center gap-2">
                     <Megaphone className="w-4 h-4 text-[#0f6cb6]" />
@@ -113,11 +197,15 @@ export default function Announcements() {
                 </DialogHeader>
                 <form onSubmit={handleBroadcast} className="p-6 space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-[#212529]">Title *</label>
+                    <label className="text-sm font-medium text-[#212529]">
+                      Title *
+                    </label>
                     <Input
                       required
                       value={formData.title}
-                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, title: e.target.value })
+                      }
                       className="border-[#dee2e6] focus:border-[#0f6cb6] text-[#212529]"
                       placeholder="e.g. Holiday Schedule Update"
                     />
@@ -125,10 +213,17 @@ export default function Announcements() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-[#212529]">Target Role</label>
+                      <label className="text-sm font-medium text-[#212529]">
+                        Target Role
+                      </label>
                       <select
                         value={formData.targetRole}
-                        onChange={(e) => setFormData({ ...formData, targetRole: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            targetRole: e.target.value,
+                          })
+                        }
                         className="w-full h-9 px-3 rounded-md bg-white border border-[#dee2e6] text-sm text-[#212529] focus:outline-none focus:ring-1 focus:ring-[#0f6cb6]"
                       >
                         <option value="ALL">All Roles</option>
@@ -137,22 +232,89 @@ export default function Announcements() {
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-[#212529]">Department</label>
-                      <Input
+                      <label className="text-sm font-medium text-[#212529]">
+                        Department
+                      </label>
+                      <select
                         value={formData.department}
-                        onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                        className="border-[#dee2e6] focus:border-[#0f6cb6] text-[#212529]"
-                        placeholder="Leave empty for all"
-                      />
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            department: e.target.value,
+                          })
+                        }
+                        className="w-full h-9 px-3 rounded-md bg-white border border-[#dee2e6] text-sm text-[#212529] focus:outline-none focus:ring-1 focus:ring-[#0f6cb6]"
+                      >
+                        {allDeptOptions.map((opt) => (
+                          <option key={opt.value || "all"} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Academic event options */}
+                  <div className="border border-dashed border-[#dee2e6] rounded-md p-3 space-y-2 bg-[#f8f9fa]">
+                    <p className="text-xs font-semibold text-[#495057] flex items-center gap-1">
+                      <CalendarIcon className="w-3 h-3 text-[#0f6cb6]" />
+                      Academic Calendar (optional)
+                    </p>
+                    <p className="text-[11px] text-[#6c757d]">
+                      Choose an event type and date if this announcement should also appear on
+                      the Academic Calendar.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 mt-1">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-[#212529]">
+                          Event Type
+                        </label>
+                        <select
+                          value={formData.eventType}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              eventType: e.target.value,
+                            })
+                          }
+                          className="w-full h-9 px-3 rounded-md bg-white border border-[#dee2e6] text-sm text-[#212529] focus:outline-none focus:ring-1 focus:ring-[#0f6cb6]"
+                        >
+                          {EVENT_TYPES.map((t) => (
+                            <option key={t.value || "none"} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-[#212529]">
+                          Event Date
+                        </label>
+                        <Input
+                          type="date"
+                          value={formData.eventDate}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              eventDate: e.target.value,
+                            })
+                          }
+                          className="border-[#dee2e6] focus:border-[#0f6cb6] text-[#212529]"
+                        />
+                      </div>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-[#212529]">Message *</label>
+                    <label className="text-sm font-medium text-[#212529]">
+                      Message *
+                    </label>
                     <Textarea
                       required
                       value={formData.content}
-                      onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, content: e.target.value })
+                      }
                       className="border-[#dee2e6] focus:border-[#0f6cb6] text-[#212529] min-h-[120px] resize-y"
                       placeholder="Write the announcement message here..."
                     />
@@ -173,9 +335,13 @@ export default function Announcements() {
                       className="bg-[#0f6cb6] hover:bg-[#0a5a9c] text-white text-sm gap-1"
                     >
                       {createAnnouncement.isPending ? (
-                        <><Loader2 className="w-3 h-3 animate-spin" /> Broadcasting...</>
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" /> Broadcasting...
+                        </>
                       ) : (
-                        <><Megaphone className="w-3 h-3" /> Broadcast</>
+                        <>
+                          <Megaphone className="w-3 h-3" /> Broadcast
+                        </>
                       )}
                     </Button>
                   </div>
@@ -203,12 +369,16 @@ export default function Announcements() {
             <p className="text-sm font-medium text-red-600">
               Failed to load announcements. Please refresh.
             </p>
-            <p className="text-xs text-[#6c757d] mt-1">{(error as any)?.message}</p>
+            <p className="text-xs text-[#6c757d] mt-1">
+              {(error as any)?.message}
+            </p>
           </div>
         ) : announcements.length === 0 ? (
           <div className="text-center py-16 px-4">
             <Megaphone className="w-10 h-10 mx-auto mb-3 text-[#adb5bd]" />
-            <p className="text-base font-medium text-[#495057]">No announcements yet</p>
+            <p className="text-base font-medium text-[#495057]">
+              No announcements yet
+            </p>
             <p className="text-sm text-[#6c757d] mt-1">
               {isAdminOrDept
                 ? `Use the "New Broadcast" button above to send one.`
@@ -218,14 +388,19 @@ export default function Announcements() {
         ) : (
           <div className="divide-y divide-[#e9ecef]">
             {announcements.map((item: any) => (
-              <div key={item.id} className="px-5 py-4 hover:bg-[#f8f9fa] transition-colors">
+              <div
+                key={item.id}
+                className="px-5 py-4 hover:bg-[#f8f9fa] transition-colors"
+              >
                 <div className="flex items-start justify-between gap-4 mb-2">
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-full bg-[#e8f4fd] flex items-center justify-center shrink-0 mt-0.5">
                       <Megaphone className="w-4 h-4 text-[#0f6cb6]" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold text-[#212529]">{item.title}</h3>
+                      <h3 className="text-sm font-semibold text-[#212529]">
+                        {item.title}
+                      </h3>
                       <div className="flex items-center gap-3 mt-1 text-[11px] text-[#6c757d]">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
