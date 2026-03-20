@@ -350,59 +350,96 @@ export async function registerRoutes(
   // ANNOUNCEMENTS ROUTES
   // ============================================
 
-  
+  // GET all announcements (for listing page)
+  app.get("/api/announcements", isAuthenticated, async (req, res) => {
+    try {
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      const announcements = await storage.getAnnouncements(tenantId);
+      res.json(announcements);
+    } catch (error) {
+      console.error("Error fetching announcements:", error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  // POST create announcement + notify all tenant members
   app.post("/api/announcements", isAuthenticated, async (req, res) => {
-  try {
+    try {
+      const userId = (req.user as any).id;
+      const { title, content, targetRole, department, eventDate, eventType } = req.body;
 
-    const { title, content, targetRole, department, tenantId, eventDate, eventType } = req.body;
+      // Auto-resolve tenantId from the database (client doesn't need to send it)
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
 
-    // Create announcement
-    const announcement = await storage.createAnnouncement({
-      title,
-      content,
-      targetRole,
-      department,
-      tenantId,
-      createdBy: (req.user as any).id
-    });
+      if (!tenantId) {
+        return res.status(400).json({ message: "No tenant found" });
+      }
 
-    // If announcement represents an academic event
-    if (eventType === "exam" || eventType === "holiday") {
-
-      const event = await storage.createCalendarEvent({
+      // Create announcement
+      const announcement = await storage.createAnnouncement({
         title,
-        description: content,
-        department,
+        content,
+        targetRole: targetRole || "ALL",
+        department: department || null,
         tenantId,
-        createdBy: (req.user as any).id,
-        eventType,
-        eventDate: new Date(eventDate)
+        createdBy: userId,
       });
 
-      // Notify all tenant members
+      // Notify ALL tenant members about this broadcast
       const members = await storage.getTenantMembers(tenantId);
-
       await Promise.all(
         members.map((m: any) =>
           storage.createNotification({
             userId: m.userId,
             tenantId,
-            type: "new_event",
-            title: "New Academic Event",
-            message: `${title} scheduled on ${new Date(eventDate).toLocaleDateString()}`,
-            relatedId: event.id,
+            type: "announcement",
+            title: `📢 ${title}`,
+            message: content?.length > 120 ? content.slice(0, 120) + "…" : content,
+            relatedId: announcement.id,
           }).catch(() => {})
         )
       );
+
+            // If it's also an academic event, create calendar entry + extra notification
+      // Any eventType is allowed as long as an eventDate is provided
+      if (eventType && eventDate) {
+        const resolvedDepartment =
+          (typeof department === "string" && department.trim()) ||
+          ((req.user as any)?.department as string | undefined) ||
+          "All";
+
+        const event = await storage.createCalendarEvent({
+          title,
+          description: content,
+          department: resolvedDepartment,
+          tenantId,
+          createdBy: userId,
+          eventType,
+          eventDate: new Date(eventDate),
+        });
+
+        await Promise.all(
+          members.map((m: any) =>
+            storage.createNotification({
+              userId: m.userId,
+              tenantId,
+              type: "new_event",
+              title: "New Academic Event",
+              message: `${title} scheduled on ${new Date(eventDate).toLocaleDateString()}`,
+              relatedId: event.id,
+            }).catch(() => {})
+          )
+        );
+      }
+
+      res.status(201).json(announcement);
+    } catch (error) {
+      console.error("Error creating announcement:", error);
+      res.status(500).json({ message: "Failed to create announcement" });
     }
-
-    res.status(201).json(announcement);
-
-  } catch (error) {
-    console.error("Error creating announcement:", error);
-    res.status(500).json({ message: "Failed to create announcement" });
-  }
-});
+  });
 
   // ============================================
   // QUERY ROUTES (RAG Processing)
@@ -999,19 +1036,27 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
   });
 
   // Create calendar event (Teacher/Admin only)
-  app.post("/api/calendar", isAuthenticated, async (req, res) => {
+    app.post("/api/calendar", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
       const userRole = (req.user as any)?.role?.toUpperCase();
       if (!["TEACHER", "ADMIN", "UNIVERSITY_ADMIN"].includes(userRole)) {
         return res.status(403).json({ message: "Not authorized" });
       }
+
       const tenantList = await storage.getAllTenants();
       const tenantId = tenantList[0]?.id || 1;
+
+      const resolvedDepartment =
+        (typeof req.body?.department === "string" && req.body.department.trim()) ||
+        ((req.user as any)?.department as string | undefined) ||
+        "All";
+
       const event = await storage.createCalendarEvent({
         ...req.body,
         tenantId,
         createdBy: userId,
+        department: resolvedDepartment,
         eventDate: new Date(req.body.eventDate),
       });
 
@@ -1075,29 +1120,55 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
       const unreadCount = notifs.filter((n: any) => !n.isRead).length;
       res.json({ notifications: notifs, unreadCount });
     } catch (err) {
+      console.error("Error fetching notifications:", err);
       res.status(500).json({ message: "Failed to fetch notifications" });
     }
   });
 
-  // Mark notification as read
-  app.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+  // Create notification manually (for testing or direct use)
+  app.post("/api/notifications", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
-      await storage.markNotificationRead(id);
-      res.json({ success: true });
+      const userId = (req.user as any)?.id;
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      const { type, title, message, relatedId } = req.body;
+      const notif = await storage.createNotification({
+        userId,
+        tenantId,
+        type: type || "announcement",
+        title: title || "Notification",
+        message: message || "You have a new notification.",
+        relatedId: relatedId || null,
+      });
+      res.status(201).json(notif);
     } catch (err) {
-      res.status(500).json({ message: "Failed to mark notification" });
+      console.error("Error creating notification:", err);
+      res.status(500).json({ message: "Failed to create notification" });
     }
   });
 
-  // Mark all notifications as read
+  // Mark ALL notifications as read — MUST be before /:id/read to avoid routing conflict
   app.patch("/api/notifications/read-all", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
       await storage.markAllNotificationsRead(userId);
       res.json({ success: true });
     } catch (err) {
+      console.error("Error marking all notifications:", err);
       res.status(500).json({ message: "Failed to mark all notifications" });
+    }
+  });
+
+  // Mark individual notification as read
+  app.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid notification id" });
+      await storage.markNotificationRead(id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error marking notification read:", err);
+      res.status(500).json({ message: "Failed to mark notification" });
     }
   });
 
@@ -1315,6 +1386,108 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
     } catch (err) {
       console.error("Admin stats error:", err);
       res.status(500).json({ message: "Failed to fetch admin stats" });
+    }
+  });
+    // ============================================
+  // ADMIN ANALYTICS (REAL DB DATA)
+  // ============================================
+  /**
+   * GET /api/admin/analytics
+   * - Total queries today
+   * - Avg relevant docs per query
+   * - Knowledge gaps queue: queries with 0 relevant docs in last 7 days
+   */
+  app.get("/api/admin/analytics", isAuthenticated, async (req, res) => {
+    try {
+      const now = new Date();
+
+      // Analytics should reflect "real" query behavior from DB.
+      // We compute in-memory aggregates from the queries table within time windows.
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+
+      const last7Start = new Date(now);
+      last7Start.setDate(last7Start.getDate() - 7);
+
+      const tenants = await storage.getAllTenants();
+      const activeTenants = tenants.length;
+      const tenantNameById = new Map(tenants.map((t: any) => [t.id, t.name]));
+
+      const [queriesToday, queriesLast7d] = await Promise.all([
+        storage.getQueriesInRange(undefined, todayStart, now),
+        storage.getQueriesInRange(undefined, last7Start, now),
+      ]);
+
+      const totalQueriesToday = queriesToday.length;
+
+      const totalQueries7d = queriesLast7d.length;
+      const sumRelevantDocs = queriesLast7d.reduce((acc: number, q: any) => {
+        const docs = Array.isArray(q.relevantDocs) ? q.relevantDocs : [];
+        return acc + docs.length;
+      }, 0);
+      const avgRelevantDocs = totalQueries7d ? sumRelevantDocs / totalQueries7d : 0;
+
+      const knowledgeGaps = queriesLast7d.filter((q: any) => {
+        const docs = Array.isArray(q.relevantDocs) ? q.relevantDocs : [];
+        return docs.length === 0;
+      });
+      const knowledgeGapsCount = knowledgeGaps.length;
+
+      // Group gaps by identical question text and compute counts + most common tenant.
+      const groupMap = new Map<
+        string,
+        { queryText: string; count: number; tenantCounts: Map<number, number> }
+      >();
+
+      for (const q of knowledgeGaps as any[]) {
+        const queryText = (q.query || "").toString();
+        if (!queryText.trim()) continue;
+
+        if (!groupMap.has(queryText)) {
+          groupMap.set(queryText, {
+            queryText,
+            count: 0,
+            tenantCounts: new Map(),
+          });
+        }
+
+        const g = groupMap.get(queryText)!;
+        g.count += 1;
+        const tId = q.tenantId as number | undefined;
+        if (typeof tId === "number") {
+          g.tenantCounts.set(tId, (g.tenantCounts.get(tId) || 0) + 1);
+        }
+      }
+
+      const knowledgeGapsQueue = Array.from(groupMap.values())
+        .map((g) => {
+          let topTenantId: number | null = null;
+          let topTenantCount = -1;
+          for (const [tId, c] of g.tenantCounts.entries()) {
+            if (c > topTenantCount) {
+              topTenantCount = c;
+              topTenantId = tId;
+            }
+          }
+          return {
+            queryText: g.queryText,
+            count: g.count,
+            tenantName: topTenantId ? tenantNameById.get(topTenantId) || "Unknown" : "Unknown",
+          };
+        })
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      res.json({
+        totalQueriesToday,
+        avgRelevantDocs,
+        activeTenants,
+        knowledgeGapsCount,
+        knowledgeGapsQueue,
+      });
+    } catch (err) {
+      console.error("Admin analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch admin analytics" });
     }
   });
 

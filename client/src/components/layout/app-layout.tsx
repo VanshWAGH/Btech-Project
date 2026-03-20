@@ -34,7 +34,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -44,6 +45,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { toast } = useToast();
+  const qc = useQueryClient();
 
   // Fetch notification count and list
   const { data: notifData } = useQuery<any>({
@@ -57,6 +60,19 @@ export function AppLayout({ children }: AppLayoutProps) {
   });
   const unreadCount = notifData?.unreadCount || 0;
   const notifications = notifData?.notifications || [];
+
+  // Mark all notifications as read
+  const markAllReadMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/notifications/read-all", { method: "PATCH", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to mark all as read");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+      toast({ title: "All notifications marked as read" });
+    },
+  });
 
   // Determine valid links for the current user's role
   const userRole = user?.role?.toUpperCase() || "STUDENT";
@@ -186,7 +202,14 @@ export function AppLayout({ children }: AppLayoutProps) {
             <DropdownMenuContent align="end" className="w-[300px] bg-white border-[#dee2e6] shadow-lg p-0">
               <div className="px-4 py-3 border-b border-[#dee2e6] bg-[#f8f9fa] flex justify-between items-center">
                 <span className="font-semibold text-[15px] text-[#212529]">Notifications</span>
-                {unreadCount > 0 && <span className="text-xs text-primary cursor-pointer hover:underline">Mark all as read</span>}
+                {unreadCount > 0 && (
+                  <span
+                    className="text-xs text-primary cursor-pointer hover:underline"
+                    onClick={() => markAllReadMutation.mutate()}
+                  >
+                    {markAllReadMutation.isPending ? "Marking..." : "Mark all as read"}
+                  </span>
+                )}
               </div>
               <div className="max-h-[300px] overflow-y-auto">
                 {notifications.length > 0 ? (

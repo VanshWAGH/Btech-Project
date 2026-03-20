@@ -26,7 +26,7 @@ import {
 } from "date-fns";
 
 const DEPARTMENTS = [
-  "Computer Science", "Information Technology", "Electronics", "Mechanical",
+  "Computer Engineering", "Information Technology", "Electronics", "Mechanical",
   "Civil", "Chemical", "Electrical", "MBA", "MCA", "BSc"
 ];
 const EVENT_TYPES = [
