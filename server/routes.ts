@@ -1388,6 +1388,108 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
       res.status(500).json({ message: "Failed to fetch admin stats" });
     }
   });
+    // ============================================
+  // ADMIN ANALYTICS (REAL DB DATA)
+  // ============================================
+  /**
+   * GET /api/admin/analytics
+   * - Total queries today
+   * - Avg relevant docs per query
+   * - Knowledge gaps queue: queries with 0 relevant docs in last 7 days
+   */
+  app.get("/api/admin/analytics", isAuthenticated, async (req, res) => {
+    try {
+      const now = new Date();
+
+      // Analytics should reflect "real" query behavior from DB.
+      // We compute in-memory aggregates from the queries table within time windows.
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+
+      const last7Start = new Date(now);
+      last7Start.setDate(last7Start.getDate() - 7);
+
+      const tenants = await storage.getAllTenants();
+      const activeTenants = tenants.length;
+      const tenantNameById = new Map(tenants.map((t: any) => [t.id, t.name]));
+
+      const [queriesToday, queriesLast7d] = await Promise.all([
+        storage.getQueriesInRange(undefined, todayStart, now),
+        storage.getQueriesInRange(undefined, last7Start, now),
+      ]);
+
+      const totalQueriesToday = queriesToday.length;
+
+      const totalQueries7d = queriesLast7d.length;
+      const sumRelevantDocs = queriesLast7d.reduce((acc: number, q: any) => {
+        const docs = Array.isArray(q.relevantDocs) ? q.relevantDocs : [];
+        return acc + docs.length;
+      }, 0);
+      const avgRelevantDocs = totalQueries7d ? sumRelevantDocs / totalQueries7d : 0;
+
+      const knowledgeGaps = queriesLast7d.filter((q: any) => {
+        const docs = Array.isArray(q.relevantDocs) ? q.relevantDocs : [];
+        return docs.length === 0;
+      });
+      const knowledgeGapsCount = knowledgeGaps.length;
+
+      // Group gaps by identical question text and compute counts + most common tenant.
+      const groupMap = new Map<
+        string,
+        { queryText: string; count: number; tenantCounts: Map<number, number> }
+      >();
+
+      for (const q of knowledgeGaps as any[]) {
+        const queryText = (q.query || "").toString();
+        if (!queryText.trim()) continue;
+
+        if (!groupMap.has(queryText)) {
+          groupMap.set(queryText, {
+            queryText,
+            count: 0,
+            tenantCounts: new Map(),
+          });
+        }
+
+        const g = groupMap.get(queryText)!;
+        g.count += 1;
+        const tId = q.tenantId as number | undefined;
+        if (typeof tId === "number") {
+          g.tenantCounts.set(tId, (g.tenantCounts.get(tId) || 0) + 1);
+        }
+      }
+
+      const knowledgeGapsQueue = Array.from(groupMap.values())
+        .map((g) => {
+          let topTenantId: number | null = null;
+          let topTenantCount = -1;
+          for (const [tId, c] of g.tenantCounts.entries()) {
+            if (c > topTenantCount) {
+              topTenantCount = c;
+              topTenantId = tId;
+            }
+          }
+          return {
+            queryText: g.queryText,
+            count: g.count,
+            tenantName: topTenantId ? tenantNameById.get(topTenantId) || "Unknown" : "Unknown",
+          };
+        })
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      res.json({
+        totalQueriesToday,
+        avgRelevantDocs,
+        activeTenants,
+        knowledgeGapsCount,
+        knowledgeGapsQueue,
+      });
+    } catch (err) {
+      console.error("Admin analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch admin analytics" });
+    }
+  });
 
   app.post("/api/calendar/suggest", isAuthenticated, async (req, res) => {
     try {
