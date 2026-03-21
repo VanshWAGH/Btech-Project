@@ -835,17 +835,71 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
    */
   app.post("/api/student/ask-teacher", isAuthenticated, async (req, res) => {
     try {
-      const { question, subject, aiAttempted, confidenceScore } = req.body;
+      const { question, subject, aiAttempted, confidenceScore, aiAnswer } = req.body;
       const userId = (req.user as any)?.id;
+      const studentDepartment = (req.user as any)?.department as string | undefined;
 
       if (!question?.trim()) {
         return res.status(400).json({ message: "Question is required" });
       }
 
-      // In real system: create a teacher_questions entry in DB
-      // For now, save as announcement/log
-      const teacherQuestion = {
-        id: Date.now(),
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      if (!tenantId) {
+        return res.status(400).json({ message: "No tenant context found" });
+      }
+
+      const allTeachers = await storage.getUsersByRole(tenantId, "TEACHER");
+      const activeTeachers = allTeachers.filter((t: any) => {
+        const lvl = (t.clearanceLevel || "LEVEL_1").toUpperCase();
+        return lvl !== "LEVEL_1";
+      });
+
+      const allCourses = await storage.getCourses(tenantId);
+      const subjectText = String(subject || "").toLowerCase().trim();
+      const teacherIdsBySubject = new Set<number>(
+        allCourses
+          .filter((c: any) => {
+            const content = `${c.courseName || ""} ${c.courseCode || ""} ${c.department || ""}`.toLowerCase();
+            return subjectText && content.includes(subjectText);
+          })
+          .map((c: any) => c.teacherId)
+      );
+
+      const targetTeachers = activeTeachers.filter((t: any) => {
+        if (teacherIdsBySubject.has(t.id)) return true;
+        const dept = String(t.department || "").toLowerCase();
+        if (studentDepartment && dept && dept === String(studentDepartment).toLowerCase()) return true;
+        return subjectText ? dept.includes(subjectText) : false;
+      });
+
+      const recipients = targetTeachers.length > 0 ? targetTeachers : activeTeachers;
+      const assignedTeacher = recipients[0];
+      if (!assignedTeacher) {
+        return res.status(400).json({ message: "No active teacher available for this query" });
+      }
+
+      const createdQuestion = await storage.createTeacherQuestion({
+        tenantId,
+        studentId: userId,
+        teacherId: assignedTeacher.id,
+        question,
+        subject: subject || "General",
+        aiAnswer: aiAttempted ? (aiAnswer || "AI provided an answer. Teacher can add follow-up guidance.") : null,
+        aiConfidence: Math.round((Number(confidenceScore) || 0) * 100),
+        status: "pending",
+      });
+      await storage.createNotification({
+        userId: assignedTeacher.id,
+        tenantId,
+        type: "student_doubt",
+        title: "Student doubt needs your review",
+        message: `${subject || "General"}: ${question.slice(0, 140)}${question.length > 140 ? "..." : ""}`,
+        relatedId: createdQuestion.id,
+      }).catch(() => {});
+
+      res.status(201).json({
+        id: createdQuestion.id,
         question,
         subject: subject || "General",
         studentId: userId,
@@ -853,15 +907,24 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
         confidenceScore: confidenceScore || 0,
         status: "pending",
         createdAt: new Date().toISOString(),
-      };
-
-      res.status(201).json({
-        ...teacherQuestion,
         message: "Question forwarded to teacher successfully",
+        notifiedTeachers: 1,
+        assignedTeacherId: assignedTeacher.id,
       });
     } catch (err) {
       console.error("Error forwarding to teacher:", err);
       res.status(500).json({ message: "Failed to forward question" });
+    }
+  });
+
+  app.get("/api/student/teacher-questions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      const rows = await storage.getTeacherQuestionsForStudent(userId);
+      res.json(rows);
+    } catch (err) {
+      console.error("Error fetching student teacher questions:", err);
+      res.status(500).json({ message: "Failed to fetch questions" });
     }
   });
 
@@ -1403,6 +1466,43 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
     } catch (err) {
       console.error("Teacher stats error:", err);
       res.status(500).json({ message: "Failed to fetch teacher stats" });
+    }
+  });
+
+  app.get("/api/teacher/questions", isAuthenticated, async (req, res) => {
+    try {
+      const teacherId = (req.user as any)?.id;
+      const rows = await storage.getTeacherQuestionsForTeacher(teacherId);
+      res.json(rows);
+    } catch (err) {
+      console.error("Error fetching teacher questions:", err);
+      res.status(500).json({ message: "Failed to fetch teacher questions" });
+    }
+  });
+
+  app.patch("/api/teacher/questions/:id/reply", isAuthenticated, async (req, res) => {
+    try {
+      const teacherId = (req.user as any)?.id;
+      const id = parseInt(req.params.id);
+      const reply = String(req.body?.reply || "").trim();
+      if (!reply) return res.status(400).json({ message: "Reply is required" });
+
+      const updated = await storage.replyTeacherQuestion(id, teacherId, reply);
+      if (!updated) return res.status(404).json({ message: "Question not found" });
+
+      await storage.createNotification({
+        userId: updated.studentId,
+        tenantId: updated.tenantId,
+        type: "teacher_reply",
+        title: "Teacher added guidance",
+        message: `Your doubt on "${updated.subject}" has a teacher follow-up.`,
+        relatedId: updated.id,
+      }).catch(() => {});
+
+      res.json(updated);
+    } catch (err) {
+      console.error("Error replying to teacher question:", err);
+      res.status(500).json({ message: "Failed to save reply" });
     }
   });
 

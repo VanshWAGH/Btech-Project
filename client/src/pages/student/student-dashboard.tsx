@@ -64,9 +64,21 @@ export default function StudentDashboard() {
     },
   });
 
+  const { data: teacherQuestions = [] } = useQuery<any[]>({
+    queryKey: ["/api/student/teacher-questions"],
+    queryFn: async () => {
+      const res = await fetch("/api/student/teacher-questions", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const recentAnnouncements = announcements.slice(0, 3);
   const recentMaterials = documents.slice(0, 4);
   const recentQueries = history.slice(0, 3);
+  const recentTeacherFollowUps = (teacherQuestions as any[])
+    .filter((q: any) => !!q.teacherReply)
+    .slice(0, 3);
 
   return (
     <AppLayout>
@@ -273,6 +285,42 @@ export default function StudentDashboard() {
 
           {/* Suggested Questions & Recommended Topics */}
           <div className="space-y-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.33 }}
+              className="glass rounded-2xl p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-display font-semibold flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-amber-400" />
+                  Teacher Follow-ups
+                </h2>
+                <Link href="/student/ask-teacher">
+                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-primary gap-1">
+                    View all <ChevronRight className="w-3 h-3" />
+                  </Button>
+                </Link>
+              </div>
+              {recentTeacherFollowUps.length === 0 ? (
+                <div className="text-center py-6 opacity-60">
+                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No teacher follow-ups yet</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {recentTeacherFollowUps.map((q: any) => (
+                    <Link key={q.id} href="/student/ask-teacher">
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/15 transition-colors cursor-pointer">
+                        <p className="text-xs text-muted-foreground mb-1">{q.subject} • {q.teacherName || "Teacher"}</p>
+                        <p className="text-sm line-clamp-2">{q.teacherReply}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
