@@ -7,6 +7,7 @@ import { api } from "@shared/routes";
 import { tenantServiceClient } from "./tenantServiceClient";
 import { z } from "zod";
 import OpenAI from "openai";
+import multer from "multer";
 import {
   ingestDocument,
   deleteDocumentVectors,
@@ -14,6 +15,49 @@ import {
   getTenantVectorCount,
   ensureCollection,
 } from "./vectordb";
+
+// ── multer: memory storage for file uploads ──────────────────
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "text/plain",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/markdown",
+      "text/html",
+      "application/json",
+    ];
+    if (allowed.includes(file.mimetype) || file.originalname.match(/\.(txt|md|pdf|doc|docx|json|html)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Unsupported file type. Please upload TXT, MD, PDF, DOC, DOCX, JSON, or HTML files."));
+    }
+  },
+});
+
+/** Extract plain text from an uploaded buffer based on mimetype / filename */
+function extractTextFromBuffer(buffer: Buffer, mimetype: string, filename: string): string {
+  // For text-based files, decode directly
+  if (
+    mimetype.startsWith("text/") ||
+    mimetype === "application/json" ||
+    /\.(txt|md|html|json|csv)$/i.test(filename)
+  ) {
+    return buffer.toString("utf-8");
+  }
+  // For PDF / DOCX — extract readable ASCII/UTF-8 text via simple regex
+  // (a proper implementation would use pdfjs or mammoth, but these add large deps)
+  const raw = buffer.toString("utf-8", 0, Math.min(buffer.length, 200_000));
+  // Strip binary garbage, keep printable characters and whitespace
+  const cleaned = raw
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, " ")
+    .replace(/\s{3,}/g, "\n")
+    .trim();
+  return cleaned || buffer.toString("latin1").replace(/[\x00-\x1F\x7F-\x9F]/g, " ").trim();
+}
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -347,6 +391,135 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // UNIVERSITY KB ROUTES (Admin + University Admin)
+  // ============================================
+
+  /**
+   * GET /api/university-kb
+   * List all KB documents for the tenant.
+   * Accessible by ADMIN and UNIVERSITY_ADMIN without tenant-member checks.
+   */
+  app.get("/api/university-kb", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const role = user?.role?.toUpperCase();
+      if (role !== "ADMIN" && role !== "UNIVERSITY_ADMIN") {
+        return res.status(403).json({ message: "Only admins can access the University KB." });
+      }
+      const tenantList = await storage.getAllTenants();
+      const tenantId = tenantList[0]?.id;
+      const docs = await storage.getDocuments(tenantId);
+      res.json(docs);
+    } catch (error) {
+      console.error("Error fetching university KB:", error);
+      res.status(500).json({ message: "Failed to fetch university knowledge base" });
+    }
+  });
+
+  /**
+   * POST /api/university-kb
+   * Upload a document (text or file) to the University Knowledge Base.
+   * Supports multipart/form-data for file uploads OR application/json for raw text.
+   * No tenant-member table check — role is read from req.user.role directly.
+   */
+  app.post("/api/university-kb", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      const user = req.user as any;
+      const role = user?.role?.toUpperCase();
+      if (role !== "ADMIN" && role !== "UNIVERSITY_ADMIN") {
+        return res.status(403).json({ message: "Only admins can upload to the University KB." });
+      }
+
+      const tenantList = await storage.getAllTenants();
+      const tenant = tenantList[0];
+      if (!tenant) {
+        return res.status(400).json({ message: "No tenant configured." });
+      }
+
+      let title: string;
+      let category: string;
+      let content: string;
+
+      if (req.file) {
+        // ── File upload path ──────────────────────────────────
+        title    = req.body?.title    || req.file.originalname.replace(/\.[^.]+$/, "");
+        category = req.body?.category || "University KB";
+        content  = extractTextFromBuffer(req.file.buffer, req.file.mimetype, req.file.originalname);
+
+        if (!content || content.trim().length < 10) {
+          return res.status(400).json({ message: "Could not extract text from the uploaded file. Please ensure it contains readable text content." });
+        }
+      } else {
+        // ── JSON / text path ─────────────────────────────────
+        title    = req.body?.title;
+        category = req.body?.category || "University KB";
+        content  = req.body?.content;
+
+        if (!title || !content || content.trim().length < 1) {
+          return res.status(400).json({ message: "Title and content are required." });
+        }
+      }
+
+      // Validate lengths
+      if (title.length > 500) title = title.slice(0, 500);
+
+      const doc = await storage.createDocument({
+        tenantId:   tenant.id,
+        title:      title.trim(),
+        content:    content.trim(),
+        category:   category.trim(),
+        uploadedBy: user.id,
+        status:     "APPROVED",
+      });
+
+      // ── Auto-ingest into Qdrant Cloud ──────────────────────
+      if (process.env.QDRANT_URL && process.env.QDRANT_API_KEY) {
+        ingestDocument({
+          id:          doc.id,
+          title:       doc.title,
+          content:     content.trim(),
+          tenantId:    tenant.id,
+          department:  tenant.name ?? "General",
+          course:      category.trim(),
+          accessLevel: "department",
+        }).catch((err) =>
+          console.error("[Qdrant] University KB ingest failed:", err)
+        );
+      }
+
+      res.status(201).json({ ...doc, message: "Document added to University Knowledge Base and queued for embedding." });
+    } catch (err: any) {
+      console.error("Error uploading to university KB:", err);
+      res.status(500).json({ message: err.message || "Failed to upload document" });
+    }
+  });
+
+  /**
+   * DELETE /api/university-kb/:id
+   * Remove a document from the University KB (and Qdrant).
+   */
+  app.delete("/api/university-kb/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const role = user?.role?.toUpperCase();
+      if (role !== "ADMIN" && role !== "UNIVERSITY_ADMIN") {
+        return res.status(403).json({ message: "Only admins can delete KB documents." });
+      }
+      const id = parseInt(req.params.id);
+      await storage.deleteDocument(id);
+      if (process.env.QDRANT_URL && process.env.QDRANT_API_KEY) {
+        deleteDocumentVectors(id).catch((err) =>
+          console.error("[Qdrant] delete vectors failed:", err)
+        );
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting KB document:", error);
+      res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  // ============================================
   // ANNOUNCEMENTS ROUTES
   // ============================================
 
@@ -467,14 +640,43 @@ export async function registerRoutes(
       // Get relevant documents for this tenant
       const docs = await storage.getDocuments(userTenant.id);
 
-      // Simple RAG: Find relevant docs by keyword matching
-      const queryLower = input.query.toLowerCase();
-      const relevantDocs = docs
-        .filter(doc =>
-          doc.title.toLowerCase().includes(queryLower) ||
-          doc.content.toLowerCase().includes(queryLower)
-        )
-        .slice(0, 3);
+      // ── SMART KEYWORD MATCHING ──────────────────────────────────────────────
+      // Split query into meaningful words (drop stop words & short tokens)
+      const STOP_WORDS = new Set([
+        "what","when","where","which","who","how","why","is","are","was","were",
+        "the","a","an","and","or","but","in","on","at","to","for","of","with",
+        "do","does","did","can","could","will","would","should","have","has","had",
+        "this","that","these","those","it","its","i","me","my","we","our","your",
+        "about","any","all","some","not","no","yes","be","been","being","am","get",
+        "please","tell","give","let","know","want","need","like","use","make",
+      ]);
+      const queryLower = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+      const queryTerms = queryLower
+        .split(/\s+/)
+        .map(w => w.trim())
+        .filter(w => w.length >= 3 && !STOP_WORDS.has(w));
+
+      // Score each document by counting term hits
+      let scoredDocs = docs.map(doc => {
+        const text = `${doc.title} ${doc.content}`.toLowerCase();
+        let score = 0;
+        for (const term of queryTerms) {
+          // Count occurrences (weighted: +2 for title match, +1 for content match)
+          if (doc.title.toLowerCase().includes(term)) score += 2;
+          if (doc.content.toLowerCase().includes(term)) score += 1;
+        }
+        return { doc, score };
+      });
+
+      // Sort by score descending; if no term matched at all, fall back to all docs
+      const hasMatches = scoredDocs.some(s => s.score > 0);
+      let relevantDocs = hasMatches
+        ? scoredDocs
+            .filter(s => s.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 4)
+            .map(s => s.doc)
+        : docs.slice(0, 3); // fallback: send top 3 docs as context so AI can still answer broadly
 
       // Build context from relevant documents
       const context = relevantDocs

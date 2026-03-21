@@ -94,13 +94,15 @@ export function AppLayout({ children }: AppLayoutProps) {
     // ── TEACHER ROUTES ───────────────────────────────
     { name: "Dashboard", href: "/teacher/dashboard", icon: LayoutDashboard, roles: ["TEACHER"] },
     { name: "My Courses", href: "/teacher/courses", icon: BookMarked, roles: ["TEACHER"] },
+    { name: "AI Chat Assistant", href: "/student/chat", icon: Bot, roles: ["TEACHER"] },
+    { name: "Knowledge Search", href: "/student/search", icon: Search, roles: ["TEACHER"] },
     { name: "Academic Calendar", href: "/teacher/calendar", icon: Calendar, roles: ["TEACHER"] },
     { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["TEACHER"] },
     { name: "Analytics", href: "/analytics", icon: Activity, roles: ["TEACHER"] },
 
     // ── UNIVERSITY ADMIN ROUTES ──────────────────────
     { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["UNIVERSITY_ADMIN"] },
-    { name: "University KB", href: "/documents", icon: Files, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "University KB", href: "/university-kb", icon: Files, roles: ["UNIVERSITY_ADMIN"] },
     { name: "Approve Documents", href: "/approve-docs", icon: CheckCircle, roles: ["UNIVERSITY_ADMIN"] },
     { name: "Faculty & Students", href: "/faculty-mgmt", icon: UserCog, roles: ["UNIVERSITY_ADMIN"] },
     { name: "University Settings", href: "/university-mgmt", icon: Settings, roles: ["UNIVERSITY_ADMIN"] },
