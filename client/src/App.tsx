@@ -15,6 +15,9 @@ import Tenants from "@/pages/tenants";
 import AnalyticsDashboard from "@/pages/analytics";
 import Announcements from "@/pages/announcements";
 import Notifications from "@/pages/notifications";
+import ProfileSettings from "./pages/profile";
+import TeacherProfile from "./pages/teacher/teacher-profile";
+import Profile from "./pages/profile";
 
 // Lazy-loaded Student pages
 const StudentDashboard = lazy(() => import("@/pages/student/student-dashboard"));
@@ -129,6 +132,9 @@ function Router() {
       <Route path="/admin-users">
         {() => <ProtectedRoute component={Tenants} />}
       </Route>
+      <Route path="/profile">
+        {() => <ProtectedRoute component={Profile} />}
+      </Route>
 
       {/* ============================================ */}
       {/* TEACHER ROUTES                               */}
@@ -147,6 +153,9 @@ function Router() {
       </Route>
       <Route path="/teacher/calendar">
         {() => <ProtectedRoute component={TeacherCalendar} />}
+      </Route>
+      <Route path="/teacher/profile">
+        {() => <ProtectedRoute component={TeacherProfile} />}
       </Route>
 
       {/* ============================================ */}

@@ -35,7 +35,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -44,10 +44,10 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const { toast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [prevCount, setPrevCount] = useState(0);
-  
+  const { toast } = useToast();
+  const qc = useQueryClient();
 
   // Fetch notification count and list
   const { data: notifData } = useQuery<any>({
@@ -72,6 +72,18 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
     setPrevCount(notifData?.unreadCount || 0);
   }, [notifData?.unreadCount]);
+  // Mark all notifications as read
+  const markAllReadMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/notifications/read-all", { method: "PATCH", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to mark all as read");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+      toast({ title: "All notifications marked as read" });
+    },
+  });
 
   // Determine valid links for the current user's role
   const userRole = user?.role?.toUpperCase() || "STUDENT";
@@ -96,6 +108,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Academic Calendar", href: "/teacher/calendar", icon: Calendar, roles: ["TEACHER"] },
     { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["TEACHER"] },
     { name: "Analytics", href: "/analytics", icon: Activity, roles: ["TEACHER"] },
+    { name: "My Profile", href: "/teacher/profile", icon: User, roles: ["TEACHER"] },
 
     // ── UNIVERSITY ADMIN ROUTES ──────────────────────
     { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["UNIVERSITY_ADMIN"] },
@@ -150,7 +163,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       />
       
       {/* Moodle-style Top Navigation Bar */}
-      <header className="bg-white border-b border-[#dee2e6] h-[60px] flex items-center justify-between px-4 sticky top-0 z-40 shadow-sm relative">
+      <header className="bg-white border-b border-[#dee2e6] h-[60px] flex items-center justify-between px-4 top-0 z-40 shadow-sm relative">
         <div className="flex items-center gap-6">
           <Link href={navigation[0]?.href || "/dashboard"}>
             <div className="flex items-center gap-2 cursor-pointer">
@@ -204,17 +217,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                 {unreadCount > 0 && (
                   <span
                     className="text-xs text-primary cursor-pointer hover:underline"
-                    onClick={async () => {
-                      await fetch("/api/notifications/read-all", {
-                        method: "PATCH",
-                        credentials: "include",
-                      });
-                      window.location.reload();
-                    }}
+                    onClick={() => markAllReadMutation.mutate()}
                   >
-                    Mark all as read
+                    {markAllReadMutation.isPending ? "Marking..." : "Mark all as read"}
                   </span>
-                )}              
+                )}
               </div>
               <div className="max-h-[300px] overflow-y-auto">
                 {notifications.length > 0 ? (
@@ -320,21 +327,24 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
           
           {/* Administration Panel */}
-          <div className="bg-white border border-[#dee2e6] shadow-sm overflow-hidden rounded-sm">
-            <div className="px-4 py-2.5 bg-[#f8f9fa] border-b border-[#dee2e6]">
-              <h3 className="font-semibold text-sm text-[#212529] uppercase tracking-wider">Administration</h3>
-            </div>
-            <div className="p-4 text-sm bg-white/50 backdrop-blur-sm">
-              <div className="text-[#0f6cb6] hover:underline cursor-pointer mb-3 flex items-center gap-2">
-                <Settings className="w-3.5 h-3.5" />
-                My profile settings
+          {userRole !== "STUDENT" && (
+            <div className="bg-white border border-[#dee2e6] shadow-sm overflow-hidden rounded-sm">
+              <div className="px-4 py-2.5 bg-[#f8f9fa] border-b border-[#dee2e6]">
+                <h3 className="font-semibold text-sm text-[#212529] uppercase tracking-wider">
+                  Administration
+                </h3>
               </div>
-              <div className="text-[#0f6cb6] hover:underline cursor-pointer flex items-center gap-2">
-                <div className="w-3.5 h-3.5 opacity-0 inline-block"/>
-                Roles / Permissions
+
+              <div className="p-4 text-sm bg-white/50 backdrop-blur-sm">
+                <Link href="/profile">
+                  <div className="text-[#0f6cb6] hover:underline cursor-pointer flex items-center gap-2">
+                    <Settings className="w-3.5 h-3.5" />
+                    My Profile Settings
+                  </div>
+                </Link>
               </div>
             </div>
-          </div>
+          )}
         </aside>
 
         {/* Mobile Menu Content */}
