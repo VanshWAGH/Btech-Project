@@ -1649,6 +1649,46 @@ Security Rule: Only answer based on the provided context. Do not reveal informat
     }
   });
 
+  // UPDATE USER PROFILE
+  app.patch("/api/user/update", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const role = (req.user as any).role;
+
+      const { firstName, lastName, department, bio } = req.body;
+
+      let updateData: any = {};
+
+      // 🧑‍🎓 STUDENT (limited control)
+      if (role === "STUDENT") {
+        if (firstName !== undefined) updateData.firstName = firstName;
+        if (lastName !== undefined) updateData.lastName = lastName;
+        if (bio !== undefined) updateData.bio = bio;
+      }
+
+      // 👨‍🏫 TEACHER (medium control)
+      else if (role === "TEACHER") {
+        if (firstName !== undefined) updateData.firstName = firstName;
+        if (lastName !== undefined) updateData.lastName = lastName;
+        if (bio !== undefined) updateData.bio = bio;
+        if (department !== undefined) updateData.department = department;
+      }
+
+      // 🏛️ ADMIN (full control)
+      else if (role === "ADMIN" || role === "UNIVERSITY_ADMIN") {
+        updateData = { firstName, lastName, department, bio };
+      }
+
+      const updatedUser = await storage.updateUser(userId, updateData);
+
+      res.json(updatedUser);
+
+    } catch (err) {
+      console.error("❌ Update profile error:", err);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
   app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
     try {
       const tenantList = await storage.getAllTenants();

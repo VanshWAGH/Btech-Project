@@ -99,6 +99,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Academic Calendar", href: "/teacher/calendar", icon: Calendar, roles: ["TEACHER"] },
     { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["TEACHER"] },
     { name: "Analytics", href: "/analytics", icon: Activity, roles: ["TEACHER"] },
+    { name: "My Profile", href: "/teacher/profile", icon: User, roles: ["TEACHER"] },
 
     // ── UNIVERSITY ADMIN ROUTES ──────────────────────
     { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["UNIVERSITY_ADMIN"] },
@@ -109,6 +110,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Academic Calendar", href: "/calendar-mgmt", icon: Calendar, roles: ["UNIVERSITY_ADMIN"] },
     { name: "Announcements", href: "/announcements", icon: Megaphone, roles: ["UNIVERSITY_ADMIN"] },
     { name: "Analytics", href: "/analytics", icon: Activity, roles: ["UNIVERSITY_ADMIN"] },
+    { name: "My Profile Settings", href: "/admin-profile", icon: User, roles: ["UNIVERSITY_ADMIN", "TEACHER"]},
 
     // ── SUPER ADMIN ROUTES ─────────────
     { name: "Dashboard Home", href: "/dashboard", icon: LayoutDashboard, roles: ["ADMIN"] },
@@ -294,22 +296,25 @@ export function AppLayout({ children }: AppLayoutProps) {
             </div>
           </div>
           
-          {/* Administration Panel */}
-          <div className="bg-white border border-[#dee2e6] shadow-sm overflow-hidden rounded-sm">
-            <div className="px-4 py-2.5 bg-[#f8f9fa] border-b border-[#dee2e6]">
-              <h3 className="font-semibold text-sm text-[#212529] uppercase tracking-wider">Administration</h3>
-            </div>
-            <div className="p-4 text-sm bg-white/50 backdrop-blur-sm">
-              <div className="text-[#0f6cb6] hover:underline cursor-pointer mb-3 flex items-center gap-2">
-                <Settings className="w-3.5 h-3.5" />
-                My profile settings
+          {/* Administration Panel - ONLY for Teacher/Admin */}
+          {userRole !== "STUDENT" && (
+            <div className="bg-white border border-[#dee2e6] shadow-sm overflow-hidden rounded-sm">
+              <div className="px-4 py-2.5 bg-[#f8f9fa] border-b border-[#dee2e6]">
+                <h3 className="font-semibold text-sm text-[#212529] uppercase tracking-wider">
+                  Administration
+                </h3>
               </div>
-              <div className="text-[#0f6cb6] hover:underline cursor-pointer flex items-center gap-2">
-                <div className="w-3.5 h-3.5 opacity-0 inline-block"/>
-                Roles / Permissions
+
+              <div className="p-4 text-sm bg-white/50 backdrop-blur-sm">
+                <Link href="/profile-settings">
+                  <div className="text-[#0f6cb6] hover:underline cursor-pointer flex items-center gap-2">
+                    <Settings className="w-3.5 h-3.5" />
+                    My Profile Settings
+                  </div>
+                </Link>
               </div>
             </div>
-          </div>
+          )}
         </aside>
 
         {/* Mobile Menu Content */}

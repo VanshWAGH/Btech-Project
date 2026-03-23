@@ -29,9 +29,34 @@ export default function StudentProfile() {
     subjects: ["DBMS", "Operating Systems", "Computer Networks"],
   });
 
-  const handleSave = () => {
-    setEditing(false);
-    toast({ title: "Profile updated", description: "Your profile information has been saved." });
+  const handleSave = async () => {
+    try {
+      const res = await fetch("/api/user/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(form),
+      });
+
+      if (!res.ok) throw new Error();
+
+      setEditing(false);
+
+      toast({
+        title: "Profile updated",
+        description: "Changes saved successfully",
+      });
+
+      // refresh page data
+      window.location.reload();
+
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to update profile",
+        variant: "destructive",
+      });
+    }
   };
 
   const toggleSubject = (subject: string) => {

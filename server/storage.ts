@@ -652,6 +652,23 @@ export class DatabaseStorage implements IStorage {
     return q as any;
   }
 
+  async updateUser(userId: number, data: any): Promise<any> {
+    const updateData: any = {};
+
+    if (data.firstName !== undefined) updateData.firstName = data.firstName;
+    if (data.lastName !== undefined) updateData.lastName = data.lastName;
+    if (data.department !== undefined) updateData.department = data.department;
+    if (data.bio !== undefined) updateData.bio = data.bio;
+
+    const [updatedUser] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, userId))
+      .returning();
+
+    return updatedUser;
+  }
+
   async updateUserStatus(userId: number, updates: any): Promise<any> {
     const [user] = await db.update(users).set(updates).where(eq(users.id, userId)).returning();
     return user;
