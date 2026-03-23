@@ -11,6 +11,7 @@ import {
   courseNotes,
   calendarEvents,
   notifications,
+  teacherQuestions,
   departments,
   academicYears,
   semesters,
@@ -25,6 +26,7 @@ import {
   type CourseNote,
   type CalendarEvent,
   type Notification,
+  type TeacherQuestion,
   type Department,
   type AcademicYear,
   type Semester,
@@ -101,6 +103,10 @@ export interface IStorage {
   createNotification(data: any): Promise<Notification>;
   markNotificationRead(id: number): Promise<void>;
   markAllNotificationsRead(userId: number): Promise<void>;
+  createTeacherQuestion(data: any): Promise<TeacherQuestion>;
+  getTeacherQuestionsForTeacher(teacherId: number): Promise<any[]>;
+  getTeacherQuestionsForStudent(studentId: number): Promise<any[]>;
+  replyTeacherQuestion(questionId: number, teacherId: number, reply: string): Promise<any>;
 
   // DEPARTMENTS
   getDepartments(tenantId: number): Promise<any[]>;
@@ -544,6 +550,47 @@ export class DatabaseStorage implements IStorage {
 
   async deleteNotification(id: number) {
     return db.delete(notifications).where(eq(notifications.id, id));
+  }
+  
+  async createTeacherQuestion(data: any): Promise<TeacherQuestion> {
+    const [question] = await db.insert(teacherQuestions).values(data).returning();
+    return question;
+  }
+
+  async getTeacherQuestionsForTeacher(teacherId: number): Promise<any[]> {
+    return db.select({
+      ...getTableColumns(teacherQuestions),
+      studentName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+      studentEmail: users.email,
+    })
+    .from(teacherQuestions)
+    .leftJoin(users, eq(teacherQuestions.studentId, users.id))
+    .where(eq(teacherQuestions.teacherId, teacherId))
+    .orderBy(desc(teacherQuestions.createdAt)) as any;
+  }
+
+  async getTeacherQuestionsForStudent(studentId: number): Promise<any[]> {
+    return db.select({
+      ...getTableColumns(teacherQuestions),
+      teacherName: sql<string>`${users.firstName} || ' ' || ${users.lastName}`,
+      teacherEmail: users.email,
+    })
+    .from(teacherQuestions)
+    .leftJoin(users, eq(teacherQuestions.teacherId, users.id))
+    .where(eq(teacherQuestions.studentId, studentId))
+    .orderBy(desc(teacherQuestions.createdAt)) as any;
+  }
+
+  async replyTeacherQuestion(questionId: number, teacherId: number, reply: string): Promise<any> {
+    const [question] = await db.update(teacherQuestions)
+      .set({
+        teacherReply: reply,
+        status: "answered",
+        answeredAt: new Date(),
+      })
+      .where(and(eq(teacherQuestions.id, questionId), eq(teacherQuestions.teacherId, teacherId)))
+      .returning();
+    return question;
   }
 
   // ============================================

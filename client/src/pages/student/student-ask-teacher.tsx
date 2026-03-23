@@ -6,7 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useCreateQuery } from "@/hooks/use-queries";
+import { apiRequest } from "@/lib/queryClient";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MessageSquare, Clock, CheckCircle, AlertTriangle,
   Send, Bot, Loader2, User, ChevronDown, ChevronUp,
@@ -14,24 +15,17 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
-// Mock pending & answered questions (in real app these come from teacher-questions API)
-const MOCK_PENDING = [
-  { id: 1, question: "Can you explain the difference between 2NF and 3NF with a real example?", subject: "DBMS", createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), status: "pending" },
-  { id: 2, question: "What is the difference between semaphore and mutex?", subject: "OS", createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), status: "pending" },
-];
-
-const MOCK_ANSWERED = [
-  {
-    id: 3,
-    question: "When is the DBMS project submission deadline?",
-    subject: "DBMS",
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "answered",
-    answer: "The DBMS project submission deadline is October 25th, 2024. Please submit via the college portal with your roll number as the filename.",
-    answeredBy: "Prof. Sharma",
-    answeredAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
+type TeacherQuestion = {
+  id: number;
+  question: string;
+  subject: string;
+  status: string;
+  createdAt: string;
+  aiAnswer?: string | null;
+  teacherReply?: string | null;
+  answeredAt?: string | null;
+  teacherName?: string | null;
+};
 
 export default function StudentAskTeacher() {
   const [question, setQuestion] = useState("");
@@ -39,42 +33,95 @@ export default function StudentAskTeacher() {
   const [tab, setTab] = useState<"new" | "pending" | "answered">("new");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const { toast } = useToast();
-  const createQuery = useCreateQuery();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: teacherQuestions = [] } = useQuery<TeacherQuestion[]>({
+    queryKey: ["/api/student/teacher-questions"],
+    queryFn: async () => {
+      const res = await fetch("/api/student/teacher-questions", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const normalizedQuestions = (teacherQuestions as TeacherQuestion[])
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .reduce<TeacherQuestion[]>((acc, curr) => {
+      const currTime = new Date(curr.createdAt).getTime();
+      const existingIdx = acc.findIndex((q) => {
+        const qTime = new Date(q.createdAt).getTime();
+        const closeInTime = Math.abs(qTime - currTime) < 30_000; // same ask event window
+        return q.question.trim().toLowerCase() === curr.question.trim().toLowerCase() && closeInTime;
+      });
+
+      if (existingIdx === -1) {
+        acc.push(curr);
+        return acc;
+      }
+
+      const existing = acc[existingIdx];
+      const existingScore = (existing.teacherReply ? 2 : 0) + (existing.aiAnswer ? 1 : 0);
+      const currentScore = (curr.teacherReply ? 2 : 0) + (curr.aiAnswer ? 1 : 0);
+      if (currentScore > existingScore) acc[existingIdx] = curr;
+      return acc;
+    }, []);
+
+  const pendingQuestions = normalizedQuestions.filter((q) => !q.aiAnswer && !q.teacherReply && q.status !== "answered");
+  const answeredQuestions = normalizedQuestions.filter((q) => !!q.aiAnswer || q.status === "answered" || !!q.teacherReply);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!question.trim()) return;
     setIsSubmitting(true);
+    try {
+      const aiRes = await apiRequest("POST", "/api/student/chat", { query: question });
+      const aiData = await aiRes.json();
+      const confidence = typeof aiData?.confidenceScore === "number"
+        ? aiData.confidenceScore
+        : (aiData?.sources?.length ? Math.min(0.95, 0.5 + aiData.sources.length * 0.15) : 0.3);
 
-    // Try AI first
-    createQuery.mutate({ query: question }, {
-      onSuccess: (data: any) => {
-        const confidence = data.sources?.length ? Math.min(0.95, 0.5 + data.sources.length * 0.15) : 0.3;
-        setIsSubmitting(false);
-        if (confidence < 0.5) {
-          // Forward to teacher (mock)
-          toast({
-            title: "✅ Forwarded to Teacher",
-            description: "The AI couldn't answer confidently. Your question has been sent to your department teacher.",
-          });
-          setQuestion("");
-          setSubject("");
-          setTab("pending");
-        } else {
-          toast({
-            title: "💡 AI answered!",
-            description: "The AI found a confident answer. Check the Chat page for details.",
-          });
-        }
-      },
-      onError: () => {
-        setIsSubmitting(false);
-        toast({ title: "Question submitted", description: "Sent to your teacher for review." });
-        setQuestion(""); setSubject("");
+      await apiRequest("POST", "/api/student/ask-teacher", {
+        question,
+        subject: subject || "General",
+        aiAttempted: confidence >= 0.5,
+        confidenceScore: confidence,
+        aiAnswer: aiData?.response || null,
+      });
+
+      if (confidence >= 0.5) {
+        setTab("answered");
+        toast({
+          title: "AI answered. Teacher notified.",
+          description: "Your question is answered and a teacher was notified for further guidance if needed.",
+        });
+      } else {
         setTab("pending");
+        toast({
+          title: "Forwarded to teacher",
+          description: "AI confidence was low. Your question has been sent to the teacher.",
+        });
       }
-    });
+      setQuestion("");
+      setSubject("");
+      queryClient.invalidateQueries({ queryKey: ["/api/student/teacher-questions"] });
+    } catch {
+      try {
+        await apiRequest("POST", "/api/student/ask-teacher", {
+          question,
+          subject: subject || "General",
+          aiAttempted: false,
+          confidenceScore: 0,
+        });
+      } catch {}
+      setQuestion("");
+      setSubject("");
+      setTab("pending");
+      toast({ title: "Question submitted", description: "Sent to your teacher for review." });
+      queryClient.invalidateQueries({ queryKey: ["/api/student/teacher-questions"] });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -115,8 +162,8 @@ export default function StudentAskTeacher() {
           <div className="flex gap-1 p-1 glass rounded-xl mb-6 w-fit">
             {[
               { key: "new", label: "Ask Question" },
-              { key: "pending", label: `Pending (${MOCK_PENDING.length})` },
-              { key: "answered", label: `Answered (${MOCK_ANSWERED.length})` },
+              { key: "pending", label: `Pending (${pendingQuestions.length})` },
+              { key: "answered", label: `Answered (${answeredQuestions.length})` },
             ].map(t => (
               <button
                 key={t.key}
@@ -173,7 +220,7 @@ export default function StudentAskTeacher() {
 
           {tab === "pending" && (
             <motion.div key="pending" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
-              {MOCK_PENDING.map((q, i) => (
+              {pendingQuestions.map((q, i) => (
                 <motion.div
                   key={q.id}
                   initial={{ opacity: 0, x: -15 }}
@@ -188,7 +235,7 @@ export default function StudentAskTeacher() {
                     <div className="flex-1">
                       <p className="font-medium text-sm mb-2">{q.question}</p>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-xs">⏳ Awaiting Teacher</Badge>
+                        <span className="px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs">⏳ Awaiting Teacher</span>
                         <span className="text-xs text-muted-foreground">{q.subject}</span>
                         <span className="text-xs text-muted-foreground">• {format(new Date(q.createdAt), 'MMM d, h:mm a')}</span>
                       </div>
@@ -201,7 +248,7 @@ export default function StudentAskTeacher() {
 
           {tab === "answered" && (
             <motion.div key="answered" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
-              {MOCK_ANSWERED.map((q, i) => (
+              {answeredQuestions.map((q, i) => (
                 <motion.div
                   key={q.id}
                   initial={{ opacity: 0, x: -15 }}
@@ -217,9 +264,9 @@ export default function StudentAskTeacher() {
                       <div className="flex-1">
                         <p className="font-medium text-sm mb-2">{q.question}</p>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-xs">✅ Answered</Badge>
+                          <span className="px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs">✅ Answered</span>
                           <span className="text-xs text-muted-foreground">{q.subject}</span>
-                          <span className="text-xs text-muted-foreground">• {q.answeredBy}</span>
+                          <span className="text-xs text-muted-foreground">• {q.teacherName || "Teacher / AI"}</span>
                         </div>
                       </div>
                       {expandedId === q.id ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
@@ -235,12 +282,30 @@ export default function StudentAskTeacher() {
                           <div className="border-t border-white/5 pt-4">
                             <div className="flex items-center gap-2 mb-3">
                               <User className="w-3.5 h-3.5 text-emerald-400" />
-                              <span className="text-xs font-semibold text-emerald-300">{q.answeredBy}</span>
-                              <span className="text-xs text-muted-foreground ml-auto">{format(new Date(q.answeredAt), 'MMM d, yyyy')}</span>
+                              <span className="text-xs font-semibold text-emerald-300">{q.teacherName || "Teacher / AI"}</span>
+                              <span className="text-xs text-muted-foreground ml-auto">{format(new Date(q.answeredAt || q.createdAt), 'MMM d, yyyy')}</span>
                             </div>
-                            <div className="glass-panel p-4 rounded-xl text-sm text-gray-300 leading-relaxed">
-                              {q.answer}
-                            </div>
+                            {q.aiAnswer && (
+                              <div className="mb-3">
+                                <p className="text-xs font-semibold text-violet-300 mb-1">AI Answer</p>
+                                <div className="glass-panel p-4 rounded-xl text-sm text-gray-300 leading-relaxed">
+                                  {q.aiAnswer}
+                                </div>
+                              </div>
+                            )}
+                            {q.teacherReply && (
+                              <div>
+                                <p className="text-xs font-semibold text-emerald-300 mb-1">Teacher Follow-up</p>
+                                <div className="glass-panel p-4 rounded-xl text-sm text-gray-300 leading-relaxed border border-emerald-500/20">
+                                  {q.teacherReply}
+                                </div>
+                              </div>
+                            )}
+                            {!q.aiAnswer && !q.teacherReply && (
+                              <div className="glass-panel p-4 rounded-xl text-sm text-gray-300 leading-relaxed">
+                                Answer shared by AI.
+                              </div>
+                            )}
                           </div>
                         </div>
                       </motion.div>

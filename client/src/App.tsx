@@ -43,6 +43,7 @@ const TeacherCalendar = lazy(() => import("@/pages/teacher/teacher-calendar"));
 const UniversitySettings = lazy(() => import("@/pages/university/university-settings"));
 const FacultyMgmt = lazy(() => import("@/pages/university/faculty-mgmt"));
 const UniversityCalendar = lazy(() => import("@/pages/university/university-calendar"));
+const UniversityKB = lazy(() => import("@/pages/university/university-kb"));
 
 // Page loading spinner
 function PageLoader() {
@@ -119,6 +120,9 @@ function Router() {
       </Route>
       <Route path="/approve-docs">
         {() => <ProtectedRoute component={Documents} />}
+      </Route>
+      <Route path="/university-kb">
+        {() => <ProtectedRoute component={UniversityKB} />}
       </Route>
       <Route path="/faculty-mgmt">
         {() => <ProtectedRoute component={FacultyMgmt} />}

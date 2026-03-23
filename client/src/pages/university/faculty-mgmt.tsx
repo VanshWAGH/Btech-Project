@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  UserCog, Search, CheckCircle, XCircle, MoreVertical, BookOpen,
+  UserCog, Search, XCircle, MoreVertical, BookOpen,
   Users, Mail, GraduationCap, Loader2, UserCheck, AlertCircle, Building2,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -32,10 +32,11 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function FacultyMgmt() {
-  const [activeTab, setActiveTab] = useState<"faculty" | "students">("faculty");
+  const [activeTab, setActiveTab] = useState<"faculty" | "students" | "analytics">("faculty");
   const [searchTerm, setSearchTerm] = useState("");
   const [assignDialog, setAssignDialog] = useState<any>(null);
   const [deptDialog, setDeptDialog] = useState<any>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState("");
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -64,19 +65,59 @@ export default function FacultyMgmt() {
 
   const filteredTeachers = (teachers as any[]).filter(t =>
     !searchTerm ||
-    `${t.firstName} ${t.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    getDisplayName(t).toLowerCase().includes(searchTerm.toLowerCase()) ||
     (t.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (t.department || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredStudents = (students as any[]).filter(s =>
     !searchTerm ||
-    `${s.firstName} ${s.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    getDisplayName(s).toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.department || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const pendingCount = (teachers as any[]).filter(t => t.clearanceLevel === "LEVEL_1").length;
+
+  const getDisplayName = (person: any) => {
+    const fullName = `${person?.firstName || ""} ${person?.lastName || ""}`.trim();
+    if (fullName) return fullName;
+    if (person?.name) return person.name;
+    if (person?.email) return person.email.split("@")[0];
+    return "Unknown user";
+  };
+
+  const availableDepartments = Array.from(
+    new Set([
+      ...(departments as any[]).map((d: any) => d?.name).filter(Boolean),
+      ...(teachers as any[]).map((t: any) => t?.department).filter(Boolean),
+      ...(students as any[]).map((s: any) => s?.department).filter(Boolean),
+      ...(courses as any[]).map((c: any) => c?.department).filter(Boolean),
+    ])
+  ) as string[];
+
+  const isTeacherActive = (teacher: any) => {
+    const lvl = teacher?.clearanceLevel || "LEVEL_1";
+    return lvl === "LEVEL_2" || lvl === "LEVEL_3" || lvl === "LEVEL_MAX";
+  };
+  const isTeacherPendingOrInactive = (teacher: any) => !isTeacherActive(teacher);
+
+  const activeTeachers = (teachers as any[]).filter(isTeacherActive);
+  const inactiveOrPendingTeachers = (teachers as any[]).filter(isTeacherPendingOrInactive);
+  const totalAssignedTeachers = activeTeachers.filter((t: any) => !!t.department).length;
+  const unassignedTeachers = activeTeachers.length - totalAssignedTeachers;
+  const totalAssignedStudents = (students as any[]).filter((s: any) => !!s.department).length;
+  const departmentStats = availableDepartments.map((deptName) => {
+    const teacherCount = activeTeachers.filter((t: any) => t.department === deptName).length;
+    const studentCount = (students as any[]).filter((s: any) => s.department === deptName).length;
+    const courseCount = (courses as any[]).filter((c: any) => c.department === deptName).length;
+    return {
+      deptName,
+      teacherCount,
+      studentCount,
+      courseCount,
+    };
+  }).sort((a, b) => b.studentCount - a.studentCount);
 
   return (
     <AppLayout>
@@ -105,15 +146,21 @@ export default function FacultyMgmt() {
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === "students" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-white"}`}>
           <Users className="w-4 h-4" /> Student Roster
         </button>
+        <button onClick={() => setActiveTab("analytics")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === "analytics" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-white"}`}>
+          <Building2 className="w-4 h-4" /> Department Analytics
+        </button>
       </div>
 
       {/* Search */}
-      <div className="relative mb-5">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder={`Search ${activeTab === "faculty" ? "faculty" : "students"} by name, email, department...`}
-          value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-          className="pl-10 h-11 glass-input max-w-md" />
-      </div>
+      {activeTab !== "analytics" && (
+        <div className="relative mb-5">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder={`Search ${activeTab === "faculty" ? "faculty" : "students"} by name, email, department...`}
+            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            className="pl-10 h-11 glass-input max-w-md" />
+        </div>
+      )}
 
       {/* FACULTY TABLE */}
       {activeTab === "faculty" && (
@@ -148,7 +195,7 @@ export default function FacultyMgmt() {
                             {(teacher.firstName?.[0] || teacher.email?.[0] || "?").toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-medium">{teacher.firstName} {teacher.lastName}</div>
+                            <div className="font-medium">{getDisplayName(teacher)}</div>
                             <div className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="w-3 h-3" />{teacher.email}</div>
                           </div>
                         </div>
@@ -189,7 +236,7 @@ export default function FacultyMgmt() {
                                 <UserCheck className="w-4 h-4 mr-2" /> Approve Registration
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem className="cursor-pointer focus:bg-white/10" onClick={() => setDeptDialog(teacher)}>
+                            <DropdownMenuItem className="cursor-pointer focus:bg-white/10" onClick={() => { setDeptDialog(teacher); setSelectedDepartment(teacher.department || ""); }}>
                               <Building2 className="w-4 h-4 mr-2" /> Assign Department
                             </DropdownMenuItem>
                             <DropdownMenuItem className="cursor-pointer focus:bg-white/10" onClick={() => setAssignDialog(teacher)}>
@@ -244,7 +291,7 @@ export default function FacultyMgmt() {
                           {(student.firstName?.[0] || student.email?.[0] || "?").toUpperCase()}
                         </div>
                         <div>
-                          <div className="font-medium">{student.firstName} {student.lastName}</div>
+                          <div className="font-medium">{getDisplayName(student)}</div>
                           <div className="text-xs text-muted-foreground">{student.email}</div>
                         </div>
                       </div>
@@ -263,7 +310,7 @@ export default function FacultyMgmt() {
                     </TableCell>
                     <TableCell>
                       <Button size="sm" variant="ghost" className="h-8 text-xs hover:text-primary"
-                        onClick={() => setDeptDialog(student)}>
+                        onClick={() => { setDeptDialog(student); setSelectedDepartment(student.department || ""); }}>
                         <Building2 className="w-3 h-3 mr-1" /> Assign Dept
                       </Button>
                     </TableCell>
@@ -275,25 +322,93 @@ export default function FacultyMgmt() {
         </motion.div>
       )}
 
+      {/* ANALYTICS TAB */}
+      {activeTab === "analytics" && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+            <div className="glass rounded-xl border border-white/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Departments</p>
+              <p className="text-2xl font-bold mt-1">{availableDepartments.length}</p>
+              <p className="text-xs text-muted-foreground mt-1">Active across users/courses</p>
+            </div>
+            <div className="glass rounded-xl border border-white/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Teachers Assigned</p>
+              <p className="text-2xl font-bold mt-1">{totalAssignedTeachers}</p>
+              <p className="text-xs text-muted-foreground mt-1">{unassignedTeachers} active-unassigned</p>
+            </div>
+            <div className="glass rounded-xl border border-white/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Inactive / Pending Teachers</p>
+              <p className="text-2xl font-bold mt-1">{inactiveOrPendingTeachers.length}</p>
+              <p className="text-xs text-muted-foreground mt-1">Excluded from active dept count</p>
+            </div>
+            <div className="glass rounded-xl border border-white/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Students Assigned</p>
+              <p className="text-2xl font-bold mt-1">{totalAssignedStudents}</p>
+              <p className="text-xs text-muted-foreground mt-1">{(students as any[]).length - totalAssignedStudents} unassigned</p>
+            </div>
+            <div className="glass rounded-xl border border-white/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Enrollments</p>
+              <p className="text-2xl font-bold mt-1">
+                {(courses as any[]).reduce((sum: number, c: any) => sum + Number(c.enrollmentCount || 0), 0)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Across all departments</p>
+            </div>
+          </div>
+
+          <div className="glass rounded-2xl border-white/5 overflow-hidden mb-6">
+            <div className="px-4 py-3 border-b border-white/10">
+              <h3 className="text-sm font-semibold">Department Snapshot</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Teachers, students and courses grouped by department</p>
+            </div>
+            {departmentStats.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-muted-foreground">No department data yet.</div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-white/5">
+                  <TableRow className="border-white/5 hover:bg-transparent">
+                    <TableHead>Department</TableHead>
+                    <TableHead>Teachers</TableHead>
+                    <TableHead>Students</TableHead>
+                    <TableHead>Courses</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {departmentStats.map((item) => (
+                    <TableRow key={item.deptName} className="border-white/5 hover:bg-white/5 transition-colors">
+                      <TableCell className="font-medium">{item.deptName}</TableCell>
+                      <TableCell>{item.teacherCount}</TableCell>
+                      <TableCell>{item.studentCount}</TableCell>
+                      <TableCell>{item.courseCount}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </motion.div>
+      )}
+
       {/* Assign Department Dialog */}
-      <Dialog open={!!deptDialog} onOpenChange={o => !o && setDeptDialog(null)}>
+      <Dialog open={!!deptDialog} onOpenChange={o => { if (!o) { setDeptDialog(null); setSelectedDepartment(""); } }}>
         <DialogContent className="glass border-white/10 sm:max-w-[360px]">
           <DialogHeader><DialogTitle>Assign Department</DialogTitle></DialogHeader>
           {deptDialog && (
             <div className="space-y-4 pt-2">
-              <p className="text-sm text-muted-foreground">Assign <strong className="text-white">{deptDialog.firstName} {deptDialog.lastName}</strong> to a department.</p>
+              <p className="text-sm text-muted-foreground">Assign <strong className="text-white">{getDisplayName(deptDialog)}</strong> to a department.</p>
               <div>
                 <label className="text-sm font-medium mb-1 block">Department</label>
-                <select defaultValue={deptDialog.department || ""} id="dept-select"
+                <select value={selectedDepartment}
+                  onChange={e => setSelectedDepartment(e.target.value)}
                   className="w-full bg-black/40 border border-white/10 rounded-md p-2 text-sm text-white">
                   <option value="">None</option>
-                  {(departments as any[]).map((d: any) => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  {availableDepartments.map((name: string) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
                 </select>
               </div>
               <Button className="w-full bg-primary" disabled={updateUser.isPending}
                 onClick={() => {
-                  const sel = (document.getElementById("dept-select") as HTMLSelectElement).value;
-                  updateUser.mutate({ id: deptDialog.id, data: { department: sel } });
+                  updateUser.mutate({ id: deptDialog.id, data: { department: selectedDepartment } });
                 }}>
                 {updateUser.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}Save Assignment
               </Button>
@@ -305,7 +420,7 @@ export default function FacultyMgmt() {
       {/* Courses Dialog */}
       <Dialog open={!!assignDialog} onOpenChange={o => !o && setAssignDialog(null)}>
         <DialogContent className="glass border-white/10 sm:max-w-[440px]">
-          <DialogHeader><DialogTitle>Courses for {assignDialog?.firstName} {assignDialog?.lastName}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Courses for {assignDialog ? getDisplayName(assignDialog) : ""}</DialogTitle></DialogHeader>
           {assignDialog && (
             <div className="space-y-3 pt-2">
               {(courses as any[]).filter(c => c.teacherId === assignDialog.id).length === 0 ? (

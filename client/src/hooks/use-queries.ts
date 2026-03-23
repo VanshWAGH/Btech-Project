@@ -24,6 +24,7 @@ export function useCreateQuery() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to process query");
       return res.json();

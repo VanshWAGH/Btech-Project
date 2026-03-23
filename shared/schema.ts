@@ -210,6 +210,25 @@ export const notifications = pgTable("notifications", {
   index("notifications_user_idx").on(table.userId),
 ]);
 
+export const teacherQuestions = pgTable("teacher_questions", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  studentId: integer("student_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  teacherId: integer("teacher_id").references(() => users.id, { onDelete: "set null" }),
+  question: text("question").notNull(),
+  subject: text("subject").notNull().default("General"),
+  aiAnswer: text("ai_answer"),
+  aiConfidence: integer("ai_confidence").default(0),
+  teacherReply: text("teacher_reply"),
+  status: text("status").notNull().default("pending"), // pending | answered
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  answeredAt: timestamp("answered_at"),
+}, (table) => [
+  index("teacher_questions_tenant_idx").on(table.tenantId),
+  index("teacher_questions_student_idx").on(table.studentId),
+  index("teacher_questions_teacher_idx").on(table.teacherId),
+]);
+
 // ============================================
 // RELATIONS
 // ============================================
@@ -301,6 +320,12 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, { fields: [notifications.userId], references: [users.id] }),
 }));
 
+export const teacherQuestionsRelations = relations(teacherQuestions, ({ one }) => ({
+  tenant: one(tenants, { fields: [teacherQuestions.tenantId], references: [tenants.id] }),
+  student: one(users, { fields: [teacherQuestions.studentId], references: [users.id] }),
+  teacher: one(users, { fields: [teacherQuestions.teacherId], references: [users.id] }),
+}));
+
 export const departmentsRelations = relations(departments, ({ one, many }) => ({
   tenant: one(tenants, { fields: [departments.tenantId], references: [tenants.id] }),
   head: one(users, { fields: [departments.headId], references: [users.id] }),
@@ -342,6 +367,7 @@ export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit
   eventDate: z.string().or(z.date()).transform(v => new Date(v)),
 });
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export const insertTeacherQuestionSchema = createInsertSchema(teacherQuestions).omit({ id: true, createdAt: true, answeredAt: true });
 export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true });
 export const insertAcademicYearSchema = createInsertSchema(academicYears).omit({ id: true, createdAt: true }).extend({
   startDate: z.string().or(z.date()).transform(v => new Date(v)),
@@ -368,6 +394,7 @@ export type CourseEnrollment = typeof courseEnrollments.$inferSelect;
 export type CourseNote = typeof courseNotes.$inferSelect;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type TeacherQuestion = typeof teacherQuestions.$inferSelect;
 export type Department = typeof departments.$inferSelect;
 export type AcademicYear = typeof academicYears.$inferSelect;
 export type Semester = typeof semesters.$inferSelect;

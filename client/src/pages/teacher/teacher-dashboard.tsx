@@ -1,14 +1,16 @@
 import { AppLayout } from "@/components/layout/app-layout";
 import { useAuth } from "@/hooks/use-auth";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen, Users, FileText, Calendar, TrendingUp, Plus, ChevronRight,
-  GraduationCap, Activity, Clock, Zap, Bell, BookMarked, BarChart2
+  GraduationCap, Activity, Clock, Zap, Bell, BookMarked, BarChart2, MessageSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 
 const eventTypeColors: Record<string, string> = {
@@ -21,6 +23,8 @@ const eventTypeColors: Record<string, string> = {
 
 export default function TeacherDashboard() {
   const { user } = useAuth();
+  const qc = useQueryClient();
+  const [replyByQuestionId, setReplyByQuestionId] = useState<Record<number, string>>({});
 
   const { data: stats } = useQuery<any>({
     queryKey: ["/api/teacher/stats"],
@@ -46,6 +50,32 @@ export default function TeacherDashboard() {
       const res = await fetch("/api/notifications", { credentials: "include" });
       if (!res.ok) return { notifications: [], unreadCount: 0 };
       return res.json();
+    },
+  });
+
+  const { data: teacherQuestions = [] } = useQuery<any[]>({
+    queryKey: ["/api/teacher/questions"],
+    queryFn: async () => {
+      const res = await fetch("/api/teacher/questions", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: async ({ id, reply }: { id: number; reply: string }) => {
+      const res = await fetch(`/api/teacher/questions/${id}/reply`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ reply }),
+      });
+      if (!res.ok) throw new Error("Failed to send reply");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/teacher/questions"] });
+      qc.invalidateQueries({ queryKey: ["/api/notifications"] });
     },
   });
 
@@ -282,6 +312,60 @@ export default function TeacherDashboard() {
                     <p className="text-sm truncate">{q.query}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{format(new Date(q.createdAt), "MMM d, h:mm a")}</p>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+
+        {/* Student Doubts Follow-up */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="glass rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="font-display font-semibold flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-amber-400" />
+              Student Doubts (AI + Teacher Input)
+            </h2>
+          </div>
+          {teacherQuestions.length === 0 ? (
+            <div className="text-center py-8 opacity-50">
+              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">No student doubts pending</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {teacherQuestions.slice(0, 8).map((q: any) => (
+                <div key={q.id} className="p-4 rounded-xl bg-white/5 border border-white/10">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-sm font-medium">{q.question}</p>
+                    <Badge className={q.status === "answered" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" : "bg-amber-500/20 text-amber-300 border-amber-500/30"}>
+                      {q.status}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {q.subject} • {q.studentName || "Student"} • {format(new Date(q.createdAt), "MMM d, h:mm a")}
+                  </p>
+                  {q.aiAnswer && (
+                    <p className="text-xs text-muted-foreground mb-3">AI: {q.aiAnswer}</p>
+                  )}
+                  {q.teacherReply ? (
+                    <div className="text-sm rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3">{q.teacherReply}</div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={replyByQuestionId[q.id] || ""}
+                        onChange={(e) => setReplyByQuestionId((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                        placeholder="Add your extra guidance for this student..."
+                        className="min-h-[90px] bg-white/5 border-white/10"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => replyMutation.mutate({ id: q.id, reply: replyByQuestionId[q.id] || "" })}
+                        disabled={!replyByQuestionId[q.id]?.trim() || replyMutation.isPending}
+                      >
+                        Send Follow-up
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
